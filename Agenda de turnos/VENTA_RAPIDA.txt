@@ -1,0 +1,148 @@
+================================================================================
+                    RESUMEN: CÓMO VENDER ESTE PROYECTO
+================================================================================
+
+PASO 1: Prepara el proyecto
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Abre la carpeta "Agenda de turnos" y ejecuta:
+  → Haz doble clic en "PREPARAR_PARA_VENTA.bat"
+
+Esto limpiará archivos innecesarios y dejará el proyecto listo.
+
+
+PASO 2: Comprime la carpeta
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Opción A - Por Email (Windows):
+  1. Haz clic derecho en "Agenda de turnos"
+  2. "Enviar a" → "Carpeta comprimida"
+  3. Se crea un archivo .ZIP
+  4. Envía ese archivo por email
+
+Opción B - Por USB:
+  1. Copia la carpeta a una USB
+  2. Entrega la USB al cliente
+
+Opción C - Por Google Drive:
+  1. Sube la carpeta a Google Drive
+  2. Comparte el enlace con el cliente
+
+
+PASO 3: Instrucciones para el cliente
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+El cliente recibe la carpeta y sigue estos pasos:
+
+1. SI TIENE ZIP: Descomprime el archivo
+
+2. SI NO TIENE NODE.JS:
+   - Va a https://nodejs.org/
+   - Descarga la versión LTS
+   - Instala (siguiendo los pasos por defecto)
+   - Reinicia la PC
+
+3. EN LA CARPETA: Hace doble clic en "INSTALAR.bat"
+   (o en "iniciar.bat" si lo anterior no funciona)
+
+4. ¡LISTO! Se abre automáticamente
+
+
+PASO 4: Soporte (opcional)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Ofrece:
+  ✓ Primeros 30 días de soporte técnico
+  ✓ Respuesta por WhatsApp/email
+  ✓ Solución de problemas a distancia
+
+
+================================================================================
+                              ARCHIVOS CLAVE
+================================================================================
+
+Entrega TODOS estos archivos en la carpeta:
+
+✓ INSTALAR.bat                    ← Cliente hace doble clic aquí
+✓ GUIA_INSTALACION_CLIENTE.md     ← Instrucciones para el cliente
+✓ iniciar.bat                     ← Alternativa si lo anterior falla
+✓ package.json                    ← Dependencias
+✓ server.js                       ← Servidor (NO modificar)
+✓ public/                         ← Carpeta con HTML, CSS, JS
+  ├── index.html
+  ├── style.css
+  └── script.js
+
+NO incluyas:
+✗ node_modules/ (se descargará automáticamente)
+✗ agenda.db (se creará automáticamente)
+✗ .git/ (a menos que uses GitHub)
+
+
+================================================================================
+                              VARIACIONES
+================================================================================
+
+Puedes personalizar antes de vender:
+
+CAMBIAR COLORES:
+  - Edita: public/style.css
+  - Busca: :root { --color-primary...
+
+CAMBIAR NOMBRE:
+  - Edita: public/index.html
+  - Línea: <title>Agenda de Clientes</title>
+
+CAMBIAR LOGO:
+  - Edita: public/index.html
+  - Línea: <div class="logo">📅 Agenda de Clientes</div>
+
+AGREGAR CAMPOS:
+  - Edita: public/index.html (agregar inputs)
+  - Edita: server.js (agregar columnas a la BD)
+  - Edita: public/script.js (agregar lógica)
+
+
+================================================================================
+                              CHECKLIST
+================================================================================
+
+Antes de vender:
+
+☐ Probaste que funciona en tu PC
+☐ Ejecutaste PREPARAR_PARA_VENTA.bat
+☐ Comprimiste la carpeta
+☐ La carpeta contiene INSTALAR.bat y GUIA_INSTALACION_CLIENTE.md
+☐ Creaste una guía de soporte para el cliente
+☐ Estableciste precio y modelo de pago
+☐ Documentaste cualquier personalización
+
+
+================================================================================
+                            PRECIO SUGERIDO
+================================================================================
+
+Basado en el tipo de cliente y personalización:
+
+PYME/Peluquería pequeña:            $200 - $500
+Instalación + Soporte 30 días
+
+Mediano negocio:                    $500 - $1,500
+Personalización + Soporte 3 meses
+
+Solicitud de cambios/actualizaciones: $100 - $300 c/u
+
+
+================================================================================
+                          ¿NECESITAS AYUDA?
+================================================================================
+
+Si quieres:
+  • Cambiar colores/diseño
+  • Agregar más campos
+  • Crear una versión premium
+  • Vender con renovación anual
+
+Avísame y te ayudo a adaptar el código.
+
+================================================================================

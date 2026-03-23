@@ -1,0 +1,138 @@
+# 📦 INSTRUCCIONES PARA VENDER/DISTRIBUIR LA AGENDA
+
+## ¿Qué debo entregar al cliente?
+
+Debes compartir esta carpeta completa: **"Agenda de turnos"**
+
+Contiene:
+```
+Agenda de turnos/
+├── INSTALAR.bat              ⭐ Archivo principal (cliente hace doble clic aquí)
+├── iniciar.bat               (Alternativa si INSTALAR.bat no funciona)
+├── iniciar.sh                (Para macOS/Linux)
+├── GUIA_INSTALACION_CLIENTE.md    (Instrucciones claras para el cliente)
+├── README.md                 (Documentación técnica)
+├── package.json              (Dependencias de Node.js)
+├── .gitignore
+├── server.js                 (Backend - NO modificar)
+└── public/                   (Frontend)
+    ├── index.html
+    ├── style.css
+    └── script.js
+```
+
+## 📤 Opciones para Entregar el Proyecto
+
+### Opción 1: Por USB
+1. Copia la carpeta "Agenda de turnos" a media USB
+2. Entrégala al cliente con las instrucciones
+3. Cliente inserta USB en su PC
+4. Cliente hace doble clic en `INSTALAR.bat`
+
+### Opción 2: Por Email
+1. Comprime la carpeta en un archivo ZIP
+2. Envía el ZIP por email al cliente
+3. Cliente descomprime el archivo
+4. Cliente ejecuta `INSTALAR.bat`
+
+### Opción 3: Por Google Drive / OneDrive
+1. Sube la carpeta a Google Drive o OneDrive
+2. Comparte el enlace con el cliente
+3. Cliente descarga la carpeta
+4. Cliente ejecuta `INSTALAR.bat`
+
+### Opción 4: Por GitHub (si quieres versionar)
+1. Crea un repositorio privado en GitHub
+2. Sube todo el código
+3. El cliente clona con `git clone`
+4. Cliente ejecuta `INSTALAR.bat`
+
+## ✅ Pasos para Preparar
+
+### 1. Limpieza de archivos innecesarios
+Antes de entregar, borra:
+```
+- Carpeta "node_modules" (se descargará automáticamente)
+- Archivo "agenda.db" (se creará con datos nuevos)
+- Archivo ".git" o ".gitignore" (si quieres)
+```
+
+### 2. Verificar que todo funciona
+1. Prueba `INSTALAR.bat` en tu PC
+2. Verifica que se abra `http://localhost:3000`
+3. Prueba agregar un cliente
+4. Verifica que los datos se guarden
+
+### 3. Crear archivo ZIP para distribución
+Si entregas por email:
+1. Haz clic derecho en la carpeta "Agenda de turnos"
+2. Selecciona "Enviar a" → "Carpeta comprimida"
+3. Se creará un archivo `.zip`
+4. Envía ese archivo al cliente
+
+## 🔒 Consideraciones de Seguridad
+
+✅ **Los datos del cliente están seguros:**
+- Se almacenan en la base de datos local (`agenda.db`)
+- No se envían a internet
+- Solo se permite acceso en la red local
+
+## 💰 Modelo de Negocio
+
+Puedes ofrecer:
+
+### Opción A: Venta única
+- Precio fijo por instalación y entrega
+
+### Opción B: Suscripción
+- Soporte técnico mensual
+- Actualizaciones futuras
+- Backups de datos
+
+### Opción C: Personalización
+- Cambiar colores/logotipo
+- Agregar campos adicionales
+- Integración con otras herramientas
+
+## 📞 Soporte al Cliente
+
+Crea un documento de soporte que incluya:
+1. **Guía de instalación** (GUIA_INSTALACION_CLIENTE.md)
+2. **FAQs comunes**
+3. **Tu teléfono/email** para soporte técnico
+4. **Horario de disponibilidad**
+
+## 🎓 Capacitación del Cliente
+
+Considera ofrecer:
+- Video tutorial de 5 minutos
+- Llamada telefónica explicativa
+- Documento PDF con capturas de pantallas
+- Sesión WhatsApp demostrativa
+
+## ⚡ Requisitos Mínimos del Cliente
+
+Su PC debe tener:
+- **Windows 7 o superior** (o macOS/Linux)
+- **4GB RAM mínimo**
+- **Conexión a internet** (solo para instalación inicial)
+- **Navegador moderno** (Chrome, Firefox, Edge)
+
+## 🚀 Actualizaciones Futuras
+
+Si el cliente quiere cambios después:
+1. El cliente te envia una copia de su `agenda.db` (si quiere preservar datos)
+2. Haces los cambios en el código
+3. Entregas la versión actualizada
+4. Él reemplaza los archivos y listo
+
+## 💡 Pro Tips
+
+- Brinda soporte por los primeros 30 días
+- Ofrece actualizaciones/mejoras pagadas después
+- Pide referencia cuando el cliente esté satisfecho
+- Considera una versión con más funcionalidades avanzadas
+
+---
+
+**¿Necesitas ayuda personalizar algo?** Déjame saber qué quieres cambiar.
