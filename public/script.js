@@ -4,6 +4,10 @@ let clienteSeleccionado = null;
 
 // API URL
 const API_URL = '/api';
+const MAX_IMAGE_DIMENSION = 1280;
+const TARGET_IMAGE_BYTES = 950 * 1024; // ~950 KB por foto
+const MIN_IMAGE_DIMENSION = 640;
+const MIN_JPEG_QUALITY = 0.5;
 
 // Inicializar
 document.addEventListener('DOMContentLoaded', function() {
@@ -50,14 +54,79 @@ function mostrarPreview(input, previewId) {
     }
 }
 
-// Convertir archivo a base64
-function convertirABase64(file) {
+function estimarBytesDesdeDataURL(dataUrl) {
+    const base64 = dataUrl.split(',')[1] || '';
+    return Math.ceil((base64.length * 3) / 4);
+}
+
+function cargarImagen(file) {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+
+        img.onload = function() {
+            URL.revokeObjectURL(objectUrl);
+            resolve(img);
+        };
+
+        img.onerror = function() {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error('No se pudo procesar la imagen seleccionada'));
+        };
+
+        img.src = objectUrl;
     });
+}
+
+// Comprime la imagen para evitar errores de tamaño en móviles/Render/MongoDB.
+async function convertirABase64(file) {
+    const img = await cargarImagen(file);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+        throw new Error('No se pudo inicializar la compresion de imagen');
+    }
+
+    let width = img.naturalWidth || img.width;
+    let height = img.naturalHeight || img.height;
+
+    if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+        const scale = Math.min(MAX_IMAGE_DIMENSION / width, MAX_IMAGE_DIMENSION / height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+    }
+
+    let quality = 0.85;
+    let dataUrl = '';
+
+    while (true) {
+        canvas.width = width;
+        canvas.height = height;
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const bytes = estimarBytesDesdeDataURL(dataUrl);
+
+        if (bytes <= TARGET_IMAGE_BYTES) {
+            break;
+        }
+
+        if (quality > MIN_JPEG_QUALITY) {
+            quality = Math.max(MIN_JPEG_QUALITY, quality - 0.08);
+            continue;
+        }
+
+        if (width <= MIN_IMAGE_DIMENSION || height <= MIN_IMAGE_DIMENSION) {
+            break;
+        }
+
+        width = Math.round(width * 0.85);
+        height = Math.round(height * 0.85);
+    }
+
+    return dataUrl;
 }
 
 // Agregar nuevo cliente
@@ -98,7 +167,8 @@ async function agregarCliente() {
         });
 
         if (!response.ok) {
-            throw new Error('Error al guardar el cliente');
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.error || 'Error al guardar el cliente');
         }
 
         const clienteGuardado = await response.json();
@@ -228,6 +298,7 @@ function cargarNuevaFoto(numeroFoto) {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
+    input.capture = 'environment';
 
     input.onchange = async function(e) {
         if (e.target.files[0]) {
@@ -251,7 +322,8 @@ function cargarNuevaFoto(numeroFoto) {
                 });
 
                 if (!response.ok) {
-                    throw new Error('Error al actualizar el cliente');
+                    const errorData = await response.json().catch(() => null);
+                    throw new Error(errorData?.error || 'Error al actualizar el cliente');
                 }
 
                 // Actualizar local
@@ -279,7 +351,8 @@ async function eliminarCliente(clienteId) {
             });
 
             if (!response.ok) {
-                throw new Error('Error al eliminar el cliente');
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.error || 'Error al eliminar el cliente');
             }
 
             // Actualizar local

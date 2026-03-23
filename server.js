@@ -30,6 +30,32 @@ const clienteSchema = new mongoose.Schema(
 
 const Cliente = mongoose.model('Cliente', clienteSchema);
 
+function mapearErrorDB(error) {
+    const mensaje = error?.message || 'Error interno del servidor';
+
+    if (
+        mensaje.includes('BSONObj size') ||
+        mensaje.includes('maximum allowed bson size')
+    ) {
+        return {
+            status: 413,
+            error: 'Las fotos son demasiado pesadas. Intenta con imagenes mas livianas.'
+        };
+    }
+
+    if (error?.name === 'ValidationError') {
+        return {
+            status: 400,
+            error: 'Datos invalidos. Revisa los campos e intenta nuevamente.'
+        };
+    }
+
+    return {
+        status: 500,
+        error: mensaje
+    };
+}
+
 function serializarCliente(cliente) {
     return {
         id: cliente._id.toString(),
@@ -131,7 +157,8 @@ app.post('/api/clientes', async (req, res) => {
         });
         res.json(serializarCliente(nuevoCliente));
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        const detalle = mapearErrorDB(error);
+        res.status(detalle.status).json({ error: detalle.error });
     }
 });
 
@@ -153,7 +180,8 @@ app.put('/api/clientes/:id', async (req, res) => {
 
         res.json(serializarCliente(clienteActualizado));
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        const detalle = mapearErrorDB(error);
+        res.status(detalle.status).json({ error: detalle.error });
     }
 });
 
