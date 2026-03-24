@@ -32,7 +32,7 @@ router.get('/', authRequired, notAgendaRequired, async (req, res) => {
 });
 
 router.post('/', authRequired, notAgendaRequired, async (req, res) => {
-    const { fecha, peluqueroId, cliente, montoCobrado } = req.body;
+    const { fecha, peluqueroId, cliente, formaPago, montoCobrado } = req.body;
 
     if (!isValidDateString(fecha) || !peluqueroId || montoCobrado === undefined) {
         return res.status(400).json({ error: 'Fecha, peluquero y monto son requeridos' });
@@ -41,6 +41,11 @@ router.post('/', authRequired, notAgendaRequired, async (req, res) => {
     const monto = Number(montoCobrado);
     if (Number.isNaN(monto) || monto < 0) {
         return res.status(400).json({ error: 'Monto invalido' });
+    }
+
+    const formaPagoNormalizada = String(formaPago || '').trim().toLowerCase();
+    if (!['efectivo', 'transferencia'].includes(formaPagoNormalizada)) {
+        return res.status(400).json({ error: 'Forma de pago invalida' });
     }
 
     const barber = await Barber.findById(peluqueroId);
@@ -54,6 +59,7 @@ router.post('/', authRequired, notAgendaRequired, async (req, res) => {
     const atencion = await Attendance.create({
         fecha,
         cliente: String(cliente || '').trim(),
+        formaPago: formaPagoNormalizada,
         montoCobrado: monto,
         comisionPorcentaje: barber.porcentajeComision,
         comisionGanada,

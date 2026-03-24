@@ -4,6 +4,7 @@ const attendanceSchema = new mongoose.Schema(
     {
         fecha: { type: String, required: true },
         cliente: { type: String, default: '', trim: true },
+        formaPago: { type: String, enum: ['efectivo', 'transferencia'], default: 'efectivo', required: true },
         montoCobrado: { type: Number, required: true, min: 0 },
         comisionPorcentaje: { type: Number, required: true, min: 0, max: 100 },
         comisionGanada: { type: Number, required: true, min: 0 },

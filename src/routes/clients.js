@@ -79,4 +79,31 @@ router.get('/:id', authRequired, async (req, res) => {
     return res.json(cliente);
 });
 
+router.put('/:id/fotos', authRequired, async (req, res) => {
+    const { foto1, foto2 } = req.body;
+    const cliente = await Client.findById(req.params.id);
+
+    if (!cliente) {
+        return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    const hasFoto1 = foto1 !== undefined;
+    const hasFoto2 = foto2 !== undefined;
+
+    if (!hasFoto1 && !hasFoto2) {
+        return res.status(400).json({ error: 'Debes enviar al menos una foto para actualizar' });
+    }
+
+    if (hasFoto1) {
+        cliente.foto1 = String(foto1 || '');
+    }
+
+    if (hasFoto2) {
+        cliente.foto2 = String(foto2 || '');
+    }
+
+    await cliente.save();
+    return res.json(cliente);
+});
+
 module.exports = router;

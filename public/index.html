@@ -73,7 +73,7 @@
                     </label>
                     <label>
                         Hora
-                        <input id="turnoHora" type="time" step="900" required>
+                        <input id="turnoHora" type="time" step="900" min="10:00" max="21:30" required>
                     </label>
                     <label>
                         Peluquero
@@ -97,6 +97,10 @@
                         <p><strong>DNI:</strong> <span id="turnoClienteInfoDni">-</span></p>
                         <p><strong>Telefono:</strong> <span id="turnoClienteInfoTelefono">-</span></p>
                         <p><strong>Instagram:</strong> <span id="turnoClienteInfoInstagram">-</span></p>
+                        <div class="cliente-turno-fotos">
+                            <img id="turnoClienteInfoFoto1" class="cliente-turno-foto hidden" alt="Foto cliente 1">
+                            <img id="turnoClienteInfoFoto2" class="cliente-turno-foto hidden" alt="Foto cliente 2">
+                        </div>
                     </article>
                     <div class="foto-upload-group">
                         <label>Foto cliente 1 (opcional)</label>
@@ -125,6 +129,12 @@
                     <label>
                         Ver fecha
                         <input id="turnosFiltroFecha" type="date">
+                    </label>
+                    <label>
+                        Peluquero
+                        <select id="turnosFiltroPeluquero">
+                            <option value="">Todos</option>
+                        </select>
                     </label>
                     <button id="reloadTurnos" class="btn" type="button">Buscar</button>
                 </div>
@@ -218,6 +228,30 @@
                                     <img id="clienteFoto1" class="cliente-foto hidden" alt="Foto cliente 1" data-slot="1">
                                     <img id="clienteFoto2" class="cliente-foto hidden" alt="Foto cliente 2" data-slot="2">
                                 </div>
+                                <div class="cliente-fotos-editor">
+                                    <h5>Actualizar fotos del cliente</h5>
+                                    <div class="foto-upload-group">
+                                        <label>Foto 1</label>
+                                        <input id="clienteEditFoto1Input" type="file" accept="image/*" class="hidden-file-input">
+                                        <div class="inline-actions">
+                                            <button type="button" class="btn" onclick="openClienteEditPhotoPicker('1','camera')">Tomar foto</button>
+                                            <button type="button" class="btn" onclick="openClienteEditPhotoPicker('1','gallery')">Elegir existente</button>
+                                        </div>
+                                        <small id="clienteEditFoto1Estado" class="photo-status"></small>
+                                        <img id="clienteEditFoto1Preview" class="turno-photo-preview hidden" alt="Nueva foto cliente 1">
+                                    </div>
+                                    <div class="foto-upload-group">
+                                        <label>Foto 2</label>
+                                        <input id="clienteEditFoto2Input" type="file" accept="image/*" class="hidden-file-input">
+                                        <div class="inline-actions">
+                                            <button type="button" class="btn" onclick="openClienteEditPhotoPicker('2','camera')">Tomar foto</button>
+                                            <button type="button" class="btn" onclick="openClienteEditPhotoPicker('2','gallery')">Elegir existente</button>
+                                        </div>
+                                        <small id="clienteEditFoto2Estado" class="photo-status"></small>
+                                        <img id="clienteEditFoto2Preview" class="turno-photo-preview hidden" alt="Nueva foto cliente 2">
+                                    </div>
+                                    <button id="guardarFotosClienteSeleccionado" type="button" class="btn primary">Guardar cambios de fotos</button>
+                                </div>
                             </div>
                         </article>
                     </div>
@@ -286,7 +320,7 @@
             </section>
 
             <section id="tab-caja" class="tab-panel card hidden restricted-agenda">
-                <h3>Caja / Registro de Atenciones</h3>
+                <h3>Caja - Carga de Ventas</h3>
                 <form id="cajaForm" class="form-grid">
                     <label>
                         Fecha
@@ -301,42 +335,67 @@
                         <input id="cajaCliente" type="text">
                     </label>
                     <label>
+                        Forma de pago
+                        <select id="cajaFormaPago" required>
+                            <option value="efectivo">Efectivo</option>
+                            <option value="transferencia">Transferencia</option>
+                        </select>
+                    </label>
+                    <label>
                         Monto cobrado
                         <input id="cajaMonto" type="number" min="0" step="0.01" required>
                     </label>
-                    <button type="submit" class="btn primary">Registrar atencion</button>
+                    <button type="submit" class="btn primary">Registrar venta</button>
                 </form>
+            </section>
+
+            <section id="tab-reportes" class="tab-panel card hidden restricted-agenda">
+                <h3>Reportes</h3>
+
+                <h4>Reporte Diario</h4>
+                <div class="inline-actions">
+                    <label>
+                        Fecha
+                        <input id="reporteFechaDia" type="date">
+                    </label>
+                    <label>
+                        Peluquero
+                        <select id="reportePeluquero">
+                            <option value="">Todos</option>
+                        </select>
+                    </label>
+                    <button id="cargarReporteDia" type="button" class="btn primary">Cargar tabla diaria</button>
+                    <button id="exportarReporteDiaExcel" type="button" class="btn">Exportar reporte diario</button>
+                </div>
+
+                <div id="reportesContainer"></div>
 
                 <div class="table-wrap">
                     <table>
                         <thead>
                             <tr>
-                                <th>Fecha</th>
                                 <th>Peluquero</th>
                                 <th>Cliente</th>
                                 <th>Monto</th>
                                 <th>Comision</th>
                             </tr>
                         </thead>
-                        <tbody id="cajaTableBody"></tbody>
+                        <tbody id="reporteDiaTableBody"></tbody>
                     </table>
                 </div>
-            </section>
 
-            <section id="tab-reportes" class="tab-panel card hidden restricted-agenda">
-                <h3>Reportes por Peluquero</h3>
+                <h4>Reporte Semanal (solo exportar)</h4>
                 <div class="inline-actions">
                     <label>
                         Desde
-                        <input id="reporteDesde" type="date">
+                        <input id="reporteSemanaDesde" type="date">
                     </label>
                     <label>
                         Hasta
-                        <input id="reporteHasta" type="date">
+                        <input id="reporteSemanaHasta" type="date">
                     </label>
-                    <button id="cargarReporte" type="button" class="btn primary">Generar reporte</button>
+                    <button id="exportarReporteSemanalExcel" type="button" class="btn">Exportar semanal en Excel</button>
                 </div>
-                <div id="reportesContainer"></div>
             </section>
 
             <section id="tab-usuarios" class="tab-panel card hidden admin-only">
@@ -366,8 +425,10 @@
                         <thead>
                             <tr>
                                 <th>Usuario</th>
+                                <th>Contrasena</th>
                                 <th>Rol</th>
                                 <th>Alta</th>
+                                <th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="usuariosTableBody"></tbody>
@@ -415,6 +476,35 @@
                 <div class="inline-actions">
                     <button type="submit" class="btn primary">Guardar y continuar</button>
                     <button id="cancelNuevoClienteTurno" type="button" class="btn danger">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="editarUsuarioModal" class="modal hidden">
+        <div class="modal-card modal-card-small">
+            <h3>Editar usuario</h3>
+            <form id="editarUsuarioForm" class="form-grid">
+                <input id="editarUsuarioId" type="hidden">
+                <label>
+                    Usuario
+                    <input id="editarUsuarioNombre" type="text" required>
+                </label>
+                <label>
+                    Rol
+                    <select id="editarUsuarioRol" required>
+                        <option value="user">Usuario</option>
+                        <option value="agenda">Solo agenda</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </label>
+                <label>
+                    Nueva contrasena (opcional)
+                    <input id="editarUsuarioPassword" type="text" placeholder="Dejar vacio para mantener">
+                </label>
+                <div class="inline-actions">
+                    <button type="submit" class="btn primary">Guardar cambios</button>
+                    <button id="cancelEditarUsuario" type="button" class="btn danger">Cancelar</button>
                 </div>
             </form>
         </div>

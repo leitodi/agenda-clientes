@@ -7,6 +7,8 @@ const { parseTimeToMinutes, minutesToTime, getDayOfWeek, getDayName } = require(
 const { getServiceDuration } = require('../utils/services');
 
 const router = express.Router();
+const OPENING_MINUTES = 10 * 60;
+const CLOSING_MINUTES = 22 * 60;
 
 function isValidDateString(date) {
     return /^\d{4}-\d{2}-\d{2}$/.test(date);
@@ -28,6 +30,18 @@ function validarDisponibilidadEnAgenda(barber, fecha, inicioMinutos, finMinutos)
 
     if (!dentroDeHorario) {
         throw new Error('Turno fuera del horario del peluquero');
+    }
+}
+
+function validarHorarioGeneral(fecha, inicioMinutos, finMinutos) {
+    const dayOfWeek = getDayOfWeek(fecha);
+
+    if (dayOfWeek === 0) {
+        throw new Error('Solo se pueden reservar turnos de lunes a sabado');
+    }
+
+    if (inicioMinutos < OPENING_MINUTES || finMinutos > CLOSING_MINUTES) {
+        throw new Error('Horario permitido: de 10:00 a 22:00');
     }
 }
 
@@ -154,6 +168,7 @@ router.post('/', authRequired, async (req, res) => {
         const inicioMinutos = parseTimeToMinutes(hora);
         const finMinutos = inicioMinutos + duracionMinutos;
 
+        validarHorarioGeneral(fecha, inicioMinutos, finMinutos);
         validarDisponibilidadEnAgenda(barber, fecha, inicioMinutos, finMinutos);
 
         await validarSuperposicion({
@@ -219,6 +234,7 @@ router.put('/:id', authRequired, notAgendaRequired, async (req, res) => {
         const inicioMinutos = parseTimeToMinutes(hora);
         const finMinutos = inicioMinutos + duracionMinutos;
 
+        validarHorarioGeneral(fecha, inicioMinutos, finMinutos);
         validarDisponibilidadEnAgenda(barber, fecha, inicioMinutos, finMinutos);
 
         await validarSuperposicion({

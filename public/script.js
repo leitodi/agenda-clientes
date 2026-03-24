@@ -4,6 +4,9 @@ const MAX_IMAGE_DIMENSION = 1280;
 const TARGET_IMAGE_BYTES = 950 * 1024;
 const MIN_IMAGE_DIMENSION = 640;
 const MIN_JPEG_QUALITY = 0.5;
+const MAX_FALLBACK_FILE_BYTES = 6 * 1024 * 1024;
+const OPENING_MINUTES = 10 * 60;
+const CLOSING_MINUTES = 22 * 60;
 
 const state = {
     token: localStorage.getItem('agendaToken') || null,
@@ -51,6 +54,104 @@ function normalizeText(value) {
 
 function normalizeDni(value) {
     return String(value || '').replace(/\D/g, '').trim();
+}
+
+function parseTimeToMinutesLocal(time) {
+    if (!/^\d{2}:\d{2}$/.test(String(time || ''))) {
+        throw new Error('Hora invalida');
+    }
+
+    const [hour, minute] = String(time).split(':').map(Number);
+    return (hour * 60) + minute;
+}
+
+function minutesToClock(totalMinutes) {
+    const hour = Math.floor(totalMinutes / 60);
+    const minute = totalMinutes % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function getDayOfWeekLocal(dateString) {
+    const date = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) {
+        throw new Error('Fecha invalida');
+    }
+    return date.getDay();
+}
+
+function isOpenDay(dateString) {
+    if (!dateString) {
+        return false;
+    }
+    return getDayOfWeekLocal(dateString) !== 0;
+}
+
+function validarRangoReportes(desde, hasta) {
+    if (!desde || !hasta) {
+        throw new Error('Debes seleccionar fecha desde y hasta');
+    }
+
+    const from = new Date(`${desde}T00:00:00`);
+    const to = new Date(`${hasta}T00:00:00`);
+
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        throw new Error('Fechas invalidas para reportes');
+    }
+
+    if (from > to) {
+        throw new Error('La fecha desde no puede ser mayor que la fecha hasta');
+    }
+
+    const diffDays = Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    if (diffDays > 31) {
+        throw new Error('El rango maximo permitido es 1 mes (31 dias)');
+    }
+}
+
+function getServiceDurationMinutes(servicio) {
+    return Number(state.servicios[servicio]?.durationMinutes || 30);
+}
+
+function getTurnoLastStartMinutes() {
+    const servicio = $('turnoServicio')?.value || 'corte';
+    const duration = getServiceDurationMinutes(servicio);
+    return CLOSING_MINUTES - duration;
+}
+
+function applyTurnoDateTimeConstraints() {
+    const horaInput = $('turnoHora');
+    const maxStartMinutes = getTurnoLastStartMinutes();
+
+    horaInput.min = '10:00';
+    horaInput.max = minutesToClock(maxStartMinutes);
+    horaInput.step = '900';
+
+    if (horaInput.value) {
+        const valueMinutes = parseTimeToMinutesLocal(horaInput.value);
+        if (valueMinutes < OPENING_MINUTES || valueMinutes > maxStartMinutes) {
+            horaInput.value = '';
+        }
+    }
+}
+
+function nextOpenDate(baseDateString) {
+    const baseDate = baseDateString ? new Date(`${baseDateString}T00:00:00`) : new Date();
+    const result = new Date(baseDate);
+
+    while (result.getDay() === 0) {
+        result.setDate(result.getDate() + 1);
+    }
+
+    return result.toISOString().slice(0, 10);
+}
+
+function getMondayDateString(baseDateString) {
+    const baseDate = baseDateString ? new Date(`${baseDateString}T00:00:00`) : new Date();
+    const monday = new Date(baseDate);
+    const day = monday.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    monday.setDate(monday.getDate() + diff);
+    return monday.toISOString().slice(0, 10);
 }
 
 function showMessage(message, type = 'success') {
@@ -104,6 +205,39 @@ async function apiFetch(url, options = {}) {
     return payload;
 }
 
+async function downloadFile(url, fallbackName) {
+    const headers = {};
+    if (state.token) {
+        headers.Authorization = `Bearer ${state.token}`;
+    }
+
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (error) {
+            payload = null;
+        }
+        throw new Error(payload?.error || 'No se pudo descargar el archivo');
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+    const fileName = match?.[1] || fallbackName;
+
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(blobUrl);
+}
+
 function applyRoleVisibility() {
     const isAdmin = isAdminRole();
     const isAgenda = isAgendaRole();
@@ -152,13 +286,47 @@ function scheduleToText(agenda) {
 }
 
 function completarSelectPeluqueros() {
-    const options = state.peluqueros
+    const activos = state.peluqueros
         .filter((p) => p.activo)
-        .map((p) => `<option value="${p._id}">${escapeHtml(p.nombre)}</option>`)
+        .map((p) => ({ id: p._id, nombre: p.nombre }));
+
+    const options = activos
+        .map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`)
         .join('');
 
-    $('turnoPeluquero').innerHTML = options;
-    $('cajaPeluquero').innerHTML = options;
+    const turnoPeluqueroSelect = $('turnoPeluquero');
+    if (turnoPeluqueroSelect) {
+        turnoPeluqueroSelect.innerHTML = options;
+    }
+
+    const cajaPeluqueroSelect = $('cajaPeluquero');
+    if (cajaPeluqueroSelect) {
+        cajaPeluqueroSelect.innerHTML = options;
+    }
+
+    const filtro = $('turnosFiltroPeluquero');
+    const current = filtro.value;
+    const filtroOptions = ['<option value="">Todos</option>']
+        .concat(activos.map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`))
+        .join('');
+    filtro.innerHTML = filtroOptions;
+
+    if (current && activos.some((p) => p.id === current)) {
+        filtro.value = current;
+    }
+
+    const reportePeluqueroSelect = $('reportePeluquero');
+    if (reportePeluqueroSelect) {
+        const currentReport = reportePeluqueroSelect.value;
+        const reportOptions = ['<option value="">Todos</option>']
+            .concat(activos.map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`))
+            .join('');
+        reportePeluqueroSelect.innerHTML = reportOptions;
+
+        if (currentReport && activos.some((p) => p.id === currentReport)) {
+            reportePeluqueroSelect.value = currentReport;
+        }
+    }
 }
 
 function renderPeluquerosTable() {
@@ -183,8 +351,20 @@ function renderPeluquerosTable() {
 
 function renderTurnosTable() {
     const body = $('turnosTableBody');
+    const peluqueroSeleccionado = $('turnosFiltroPeluquero')?.value || '';
+    const turnosVisibles = state.turnos.filter((turno) => {
+        if (!peluqueroSeleccionado) {
+            return true;
+        }
+        return String(turno.peluquero?._id || '') === String(peluqueroSeleccionado);
+    });
 
-    body.innerHTML = state.turnos.map((t) => {
+    if (!turnosVisibles.length) {
+        body.innerHTML = '<tr><td colspan="6">No hay reservas para ese filtro.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = turnosVisibles.map((t) => {
         const servicio = state.servicios[t.servicio]?.label || t.servicio;
         const hasPhotos = Boolean(t.foto1 || t.foto2);
         const fotosCell = hasPhotos
@@ -253,6 +433,7 @@ function renderClienteDetalle() {
     if (!cliente) {
         $('clienteDetalleVacio').classList.remove('hidden');
         $('clienteDetalle').classList.add('hidden');
+        clearClienteEditPhotos();
         return;
     }
 
@@ -263,6 +444,7 @@ function renderClienteDetalle() {
     $('clienteTelefono').textContent = cliente.telefono || '-';
     $('clienteInstagram').textContent = cliente.instagram || '-';
     $('clienteUltimaAtencion').textContent = cliente.ultimaAtencion || '-';
+    clearClienteEditPhotos();
 
     const foto1 = $('clienteFoto1');
     const foto2 = $('clienteFoto2');
@@ -313,12 +495,19 @@ function findClienteByNombre(nombre) {
 
 function updateTurnoClienteInfo(cliente) {
     const card = $('turnoClienteInfo');
+    const foto1 = $('turnoClienteInfoFoto1');
+    const foto2 = $('turnoClienteInfoFoto2');
+
     if (!cliente) {
         card.classList.add('hidden');
         $('turnoClienteInfoNombre').textContent = '-';
         $('turnoClienteInfoDni').textContent = '-';
         $('turnoClienteInfoTelefono').textContent = '-';
         $('turnoClienteInfoInstagram').textContent = '-';
+        foto1.src = '';
+        foto1.classList.add('hidden');
+        foto2.src = '';
+        foto2.classList.add('hidden');
         return;
     }
 
@@ -327,6 +516,22 @@ function updateTurnoClienteInfo(cliente) {
     $('turnoClienteInfoDni').textContent = cliente.dni || '-';
     $('turnoClienteInfoTelefono').textContent = cliente.telefono || '-';
     $('turnoClienteInfoInstagram').textContent = cliente.instagram || '-';
+
+    if (cliente.foto1) {
+        foto1.src = cliente.foto1;
+        foto1.classList.remove('hidden');
+    } else {
+        foto1.src = '';
+        foto1.classList.add('hidden');
+    }
+
+    if (cliente.foto2) {
+        foto2.src = cliente.foto2;
+        foto2.classList.remove('hidden');
+    } else {
+        foto2.src = '';
+        foto2.classList.add('hidden');
+    }
 }
 
 function syncTurnoClienteByInput() {
@@ -365,14 +570,30 @@ function closeNuevoClienteTurnoModal() {
     $('nuevoClienteTurnoModal').classList.add('hidden');
 }
 
+function openEditarUsuarioModal(user) {
+    $('editarUsuarioId').value = user._id || user.id;
+    $('editarUsuarioNombre').value = user.username || '';
+    $('editarUsuarioRol').value = user.role || 'user';
+    $('editarUsuarioPassword').value = '';
+    $('editarUsuarioModal').classList.remove('hidden');
+}
+
+function closeEditarUsuarioModal() {
+    $('editarUsuarioModal').classList.add('hidden');
+}
+
 function renderCajaTable() {
     const body = $('cajaTableBody');
+    if (!body) {
+        return;
+    }
 
     body.innerHTML = state.atenciones.map((a) => `
         <tr>
             <td>${a.fecha}</td>
             <td>${escapeHtml(a.peluquero?.nombre || '-')}</td>
             <td>${escapeHtml(a.cliente || '-')}</td>
+            <td>${escapeHtml(a.formaPago || '-')}</td>
             <td>$${Number(a.montoCobrado).toFixed(2)}</td>
             <td>$${Number(a.comisionGanada).toFixed(2)} (${a.comisionPorcentaje}%)</td>
         </tr>
@@ -385,49 +606,66 @@ function renderUsuariosTable() {
     body.innerHTML = state.usuarios.map((u) => `
         <tr>
             <td>${escapeHtml(u.username)}</td>
+            <td><code>${escapeHtml(u.passwordVisible || '(sin registro)')}</code></td>
             <td>${escapeHtml(u.role)}</td>
             <td>${new Date(u.createdAt).toLocaleDateString('es-AR')}</td>
+            <td><button class="btn" type="button" data-action="edit-user" data-id="${u._id || u.id}">Editar</button></td>
         </tr>
     `).join('');
 }
 
-function renderReportes(data) {
+function renderReportes(atenciones = []) {
     const container = $('reportesContainer');
+    const body = $('reporteDiaTableBody');
 
-    if (!data.length) {
-        container.innerHTML = '<p>No hay datos para el rango seleccionado.</p>';
+    if (!container || !body) {
         return;
     }
 
-    container.innerHTML = data.map((group) => `
+    const totalCobrado = atenciones.reduce((acc, item) => acc + Number(item.montoCobrado || 0), 0);
+    const totalComision = atenciones.reduce((acc, item) => acc + Number(item.comisionGanada || 0), 0);
+    const netoSalon = totalCobrado - totalComision;
+
+    const groupedByBarber = new Map();
+    atenciones.forEach((item) => {
+        const barberName = item.peluquero?.nombre || 'Sin peluquero';
+        if (!groupedByBarber.has(barberName)) {
+            groupedByBarber.set(barberName, { total: 0, comision: 0 });
+        }
+        const target = groupedByBarber.get(barberName);
+        target.total += Number(item.montoCobrado || 0);
+        target.comision += Number(item.comisionGanada || 0);
+    });
+
+    const resumenPeluqueros = Array.from(groupedByBarber.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([nombre, values]) => (
+            `<li><strong>${escapeHtml(nombre)}:</strong> $${values.total.toFixed(2)} (Comision $${values.comision.toFixed(2)})</li>`
+        ))
+        .join('');
+
+    container.innerHTML = `
         <article class="report-card">
             <div class="report-header">
-                <strong>${escapeHtml(group.peluqueroNombre)}</strong>
-                <span>Total cobrado: $${group.totalCobrado.toFixed(2)} | Total comision: $${group.totalComision.toFixed(2)}</span>
+                <strong>Totales del dia</strong>
+                <span>Total cobrado: $${totalCobrado.toFixed(2)} | Total comision: $${totalComision.toFixed(2)} | Neto salon: $${netoSalon.toFixed(2)}</span>
             </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Cliente</th>
-                            <th>Monto</th>
-                            <th>Comision</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${group.registros.map((r) => `
-                            <tr>
-                                <td>${r.fecha}</td>
-                                <td>${escapeHtml(r.cliente || '-')}</td>
-                                <td>$${Number(r.montoCobrado).toFixed(2)}</td>
-                                <td>$${Number(r.comisionGanada).toFixed(2)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
+            ${resumenPeluqueros ? `<ul class="form-grid">${resumenPeluqueros}</ul>` : '<p>No hay ventas para la fecha seleccionada.</p>'}
         </article>
+    `;
+
+    if (!atenciones.length) {
+        body.innerHTML = '<tr><td colspan="4">No hay ventas para el filtro seleccionado.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = atenciones.map((item) => `
+        <tr>
+            <td>${escapeHtml(item.peluquero?.nombre || '-')}</td>
+            <td>${escapeHtml(item.cliente || '-')}</td>
+            <td>$${Number(item.montoCobrado || 0).toFixed(2)}</td>
+            <td>$${Number(item.comisionGanada || 0).toFixed(2)}</td>
+        </tr>
     `).join('');
 }
 
@@ -516,6 +754,22 @@ function getClientePhotoRefs(slot) {
     };
 }
 
+function getClienteEditPhotoRefs(slot) {
+    if (slot === '1') {
+        return {
+            input: $('clienteEditFoto1Input'),
+            preview: $('clienteEditFoto1Preview'),
+            status: $('clienteEditFoto1Estado')
+        };
+    }
+
+    return {
+        input: $('clienteEditFoto2Input'),
+        preview: $('clienteEditFoto2Preview'),
+        status: $('clienteEditFoto2Estado')
+    };
+}
+
 function setTurnoPhotoStatus(slot, message, isError = false) {
     const { status } = getTurnoPhotoRefs(slot);
     status.textContent = message || '';
@@ -528,9 +782,24 @@ function setClientePhotoStatus(slot, message, isError = false) {
     status.style.color = isError ? '#b91c1c' : '#475569';
 }
 
+function setClienteEditPhotoStatus(slot, message, isError = false) {
+    const { status } = getClienteEditPhotoRefs(slot);
+    status.textContent = message || '';
+    status.style.color = isError ? '#b91c1c' : '#475569';
+}
+
 function estimarBytesDesdeDataURL(dataUrl) {
     const base64 = dataUrl.split(',')[1] || '';
     return Math.ceil((base64.length * 3) / 4);
+}
+
+function leerArchivoComoDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+        reader.readAsDataURL(file);
+    });
 }
 
 function cargarImagen(file) {
@@ -552,7 +821,7 @@ function cargarImagen(file) {
     });
 }
 
-async function convertirImagenABase64(file) {
+async function convertirImagenCanvasAJpeg(file) {
     const img = await cargarImagen(file);
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -602,6 +871,35 @@ async function convertirImagenABase64(file) {
     return dataUrl;
 }
 
+function canPreviewDataUrl(dataUrl) {
+    const mime = String(dataUrl || '').slice(0, 80).toLowerCase();
+    return !mime.includes('image/heic') && !mime.includes('image/heif');
+}
+
+async function convertirImagenABase64(file) {
+    try {
+        const converted = await convertirImagenCanvasAJpeg(file);
+        return {
+            dataUrl: converted,
+            previewable: true,
+            source: 'canvas'
+        };
+    } catch (error) {
+        const dataUrl = await leerArchivoComoDataURL(file);
+        const bytes = estimarBytesDesdeDataURL(dataUrl);
+
+        if (bytes > MAX_FALLBACK_FILE_BYTES) {
+            throw new Error('Imagen demasiado pesada para este formato. Usa una imagen mas liviana.');
+        }
+
+        return {
+            dataUrl,
+            previewable: canPreviewDataUrl(dataUrl),
+            source: 'fallback'
+        };
+    }
+}
+
 async function processTurnoPhoto(slot) {
     const refs = getTurnoPhotoRefs(slot);
     const file = refs.input.files && refs.input.files[0] ? refs.input.files[0] : null;
@@ -612,12 +910,20 @@ async function processTurnoPhoto(slot) {
 
     try {
         setTurnoPhotoStatus(slot, 'Procesando imagen...');
-        const base64 = await convertirImagenABase64(file);
-        refs.input.dataset.base64 = base64;
-        refs.preview.src = base64;
-        refs.preview.classList.remove('hidden');
-        const kb = Math.round(estimarBytesDesdeDataURL(base64) / 1024);
-        setTurnoPhotoStatus(slot, `Lista (${kb} KB)`);
+        const conversion = await convertirImagenABase64(file);
+        refs.input.dataset.base64 = conversion.dataUrl;
+
+        if (conversion.previewable) {
+            refs.preview.src = conversion.dataUrl;
+            refs.preview.classList.remove('hidden');
+        } else {
+            refs.preview.src = '';
+            refs.preview.classList.add('hidden');
+        }
+
+        const kb = Math.round(estimarBytesDesdeDataURL(conversion.dataUrl) / 1024);
+        const suffix = conversion.previewable ? '' : ' - sin vista previa';
+        setTurnoPhotoStatus(slot, `Lista (${kb} KB)${suffix}`);
     } catch (error) {
         refs.input.value = '';
         delete refs.input.dataset.base64;
@@ -638,18 +944,60 @@ async function processClientePhoto(slot) {
 
     try {
         setClientePhotoStatus(slot, 'Procesando imagen...');
-        const base64 = await convertirImagenABase64(file);
-        refs.input.dataset.base64 = base64;
-        refs.preview.src = base64;
-        refs.preview.classList.remove('hidden');
-        const kb = Math.round(estimarBytesDesdeDataURL(base64) / 1024);
-        setClientePhotoStatus(slot, `Lista (${kb} KB)`);
+        const conversion = await convertirImagenABase64(file);
+        refs.input.dataset.base64 = conversion.dataUrl;
+
+        if (conversion.previewable) {
+            refs.preview.src = conversion.dataUrl;
+            refs.preview.classList.remove('hidden');
+        } else {
+            refs.preview.src = '';
+            refs.preview.classList.add('hidden');
+        }
+
+        const kb = Math.round(estimarBytesDesdeDataURL(conversion.dataUrl) / 1024);
+        const suffix = conversion.previewable ? '' : ' - sin vista previa';
+        setClientePhotoStatus(slot, `Lista (${kb} KB)${suffix}`);
     } catch (error) {
         refs.input.value = '';
         delete refs.input.dataset.base64;
         refs.preview.src = '';
         refs.preview.classList.add('hidden');
         setClientePhotoStatus(slot, error.message, true);
+        throw error;
+    }
+}
+
+async function processClienteEditPhoto(slot) {
+    const refs = getClienteEditPhotoRefs(slot);
+    const file = refs.input.files && refs.input.files[0] ? refs.input.files[0] : null;
+
+    if (!file) {
+        return;
+    }
+
+    try {
+        setClienteEditPhotoStatus(slot, 'Procesando imagen...');
+        const conversion = await convertirImagenABase64(file);
+        refs.input.dataset.base64 = conversion.dataUrl;
+
+        if (conversion.previewable) {
+            refs.preview.src = conversion.dataUrl;
+            refs.preview.classList.remove('hidden');
+        } else {
+            refs.preview.src = '';
+            refs.preview.classList.add('hidden');
+        }
+
+        const kb = Math.round(estimarBytesDesdeDataURL(conversion.dataUrl) / 1024);
+        const suffix = conversion.previewable ? '' : ' - sin vista previa';
+        setClienteEditPhotoStatus(slot, `Lista (${kb} KB)${suffix}`);
+    } catch (error) {
+        refs.input.value = '';
+        delete refs.input.dataset.base64;
+        refs.preview.src = '';
+        refs.preview.classList.add('hidden');
+        setClienteEditPhotoStatus(slot, error.message, true);
         throw error;
     }
 }
@@ -684,6 +1032,21 @@ async function getProcessedClientePhoto(slot) {
     return '';
 }
 
+async function getProcessedClienteEditPhoto(slot) {
+    const refs = getClienteEditPhotoRefs(slot);
+
+    if (refs.input.dataset.base64) {
+        return refs.input.dataset.base64;
+    }
+
+    if (refs.input.files && refs.input.files[0]) {
+        await processClienteEditPhoto(slot);
+        return refs.input.dataset.base64 || '';
+    }
+
+    return '';
+}
+
 function clearTurnoPhotos() {
     ['1', '2'].forEach((slot) => {
         const refs = getTurnoPhotoRefs(slot);
@@ -703,6 +1066,22 @@ function clearClientePhotos() {
         refs.preview.src = '';
         refs.preview.classList.add('hidden');
         setClientePhotoStatus(slot, '');
+    });
+}
+
+function clearClienteEditPhotos() {
+    ['1', '2'].forEach((slot) => {
+        const refs = getClienteEditPhotoRefs(slot);
+
+        if (!refs.input || !refs.preview || !refs.status) {
+            return;
+        }
+
+        refs.input.value = '';
+        delete refs.input.dataset.base64;
+        refs.preview.src = '';
+        refs.preview.classList.add('hidden');
+        setClienteEditPhotoStatus(slot, '');
     });
 }
 
@@ -741,6 +1120,24 @@ function openClientePhotoPicker(slot, source) {
 }
 
 window.openClientePhotoPicker = openClientePhotoPicker;
+
+function openClienteEditPhotoPicker(slot, source) {
+    const refs = getClienteEditPhotoRefs(slot);
+    refs.input.value = '';
+    delete refs.input.dataset.base64;
+
+    if (source === 'camera') {
+        refs.input.setAttribute('capture', 'environment');
+        setClienteEditPhotoStatus(slot, 'Abriendo camara...');
+    } else {
+        refs.input.removeAttribute('capture');
+        setClienteEditPhotoStatus(slot, 'Selecciona una imagen de la galeria');
+    }
+
+    refs.input.click();
+}
+
+window.openClienteEditPhotoPicker = openClienteEditPhotoPicker;
 
 function openFotosModal(fotoSrc1, fotoSrc2) {
     const modal = $('turnoFotoModal');
@@ -802,6 +1199,7 @@ async function cargarConfig() {
         if (config?.servicios) {
             state.servicios = config.servicios;
         }
+        applyTurnoDateTimeConstraints();
     } catch (error) {
         console.warn('No se pudo cargar config:', error.message);
     }
@@ -847,9 +1245,34 @@ async function cargarTurnos() {
 }
 
 async function cargarAtenciones() {
-    const desde = $('cajaFecha').value;
-    state.atenciones = await apiFetch(`/api/atenciones?desde=${desde}`);
+    const fecha = $('cajaFecha').value;
+    if (!fecha) {
+        state.atenciones = [];
+        renderCajaTable();
+        return;
+    }
+    state.atenciones = await apiFetch(`/api/atenciones?desde=${fecha}&hasta=${fecha}`);
     renderCajaTable();
+}
+
+async function cargarReporteDia() {
+    const fecha = $('reporteFechaDia').value;
+    if (!fecha) {
+        throw new Error('Selecciona una fecha para generar el reporte');
+    }
+
+    const peluqueroId = $('reportePeluquero').value || '';
+    const params = new URLSearchParams({
+        desde: fecha,
+        hasta: fecha
+    });
+
+    if (peluqueroId) {
+        params.set('peluqueroId', peluqueroId);
+    }
+
+    const atenciones = await apiFetch(`/api/atenciones?${params.toString()}`);
+    renderReportes(atenciones);
 }
 
 async function cargarUsuarios() {
@@ -870,8 +1293,8 @@ async function cargarTodoInicial() {
     if (!isAgendaRole()) {
         await Promise.all([
             cargarDashboard(),
-            cargarAtenciones(),
-            cargarUsuarios()
+            cargarUsuarios(),
+            cargarReporteDia()
         ]);
     }
 }
@@ -948,6 +1371,22 @@ function attachEvents() {
         }
     });
 
+    $('clienteEditFoto1Input').addEventListener('change', async () => {
+        try {
+            await processClienteEditPhoto('1');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('clienteEditFoto2Input').addEventListener('change', async () => {
+        try {
+            await processClienteEditPhoto('2');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
     $('closeTurnoFotoModal').addEventListener('click', closeTurnoFotoModal);
     $('turnoFotoModal').addEventListener('click', (event) => {
         if (event.target.id === 'turnoFotoModal') {
@@ -1013,6 +1452,18 @@ function attachEvents() {
         }
     });
 
+    $('turnoServicio').addEventListener('change', () => {
+        applyTurnoDateTimeConstraints();
+    });
+
+    $('turnoFecha').addEventListener('change', () => {
+        if (!isOpenDay($('turnoFecha').value)) {
+            const adjusted = nextOpenDate($('turnoFecha').value);
+            $('turnoFecha').value = adjusted;
+            showMessage('Solo se permiten turnos de lunes a sabado', 'error');
+        }
+    });
+
     $('turnoCliente').addEventListener('input', () => {
         syncTurnoClienteByInput();
     });
@@ -1037,16 +1488,32 @@ function attachEvents() {
         event.preventDefault();
 
         try {
+            const fechaTurno = $('turnoFecha').value;
+            const horaTurno = $('turnoHora').value;
+            const servicioTurno = $('turnoServicio').value;
+            const duration = getServiceDurationMinutes(servicioTurno);
+            const inicioMinutos = parseTimeToMinutesLocal(horaTurno);
+            const finMinutos = inicioMinutos + duration;
+
+            if (!isOpenDay(fechaTurno)) {
+                throw new Error('Solo se pueden reservar turnos de lunes a sabado');
+            }
+
+            if (inicioMinutos < OPENING_MINUTES || finMinutos > CLOSING_MINUTES) {
+                const ultimoHorario = minutesToClock(CLOSING_MINUTES - duration);
+                throw new Error(`Horario permitido: 10:00 a ${ultimoHorario} para este servicio`);
+            }
+
             const foto1 = await getProcessedTurnoPhoto('1');
             const foto2 = await getProcessedTurnoPhoto('2');
             const clienteNombre = $('turnoCliente').value.trim();
             const clienteCoincidente = syncTurnoClienteByInput();
 
             const payload = {
-                fecha: $('turnoFecha').value,
-                hora: $('turnoHora').value,
+                fecha: fechaTurno,
+                hora: horaTurno,
                 peluqueroId: $('turnoPeluquero').value,
-                servicio: $('turnoServicio').value,
+                servicio: servicioTurno,
                 cliente: clienteNombre,
                 clienteId: clienteCoincidente?._id || null,
                 foto1,
@@ -1115,6 +1582,10 @@ function attachEvents() {
         }
     });
 
+    $('turnosFiltroPeluquero').addEventListener('change', () => {
+        renderTurnosTable();
+    });
+
     $('reloadClientes').addEventListener('click', async () => {
         try {
             await cargarClientes();
@@ -1135,6 +1606,22 @@ function attachEvents() {
         selectCliente(item.dataset.id);
     });
 
+    $('turnoClienteInfoFoto1').addEventListener('click', () => {
+        const cliente = state.clientes.find((item) => item._id === state.selectedTurnoClienteId);
+        if (!cliente?.foto1) {
+            return;
+        }
+        openFotosModal(cliente.foto1, cliente.foto2);
+    });
+
+    $('turnoClienteInfoFoto2').addEventListener('click', () => {
+        const cliente = state.clientes.find((item) => item._id === state.selectedTurnoClienteId);
+        if (!cliente?.foto2) {
+            return;
+        }
+        openFotosModal(cliente.foto2, cliente.foto1);
+    });
+
     $('clienteFoto1').addEventListener('click', () => {
         const cliente = state.clientes.find((item) => item._id === state.selectedClienteId);
         if (!cliente?.foto1) {
@@ -1149,6 +1636,40 @@ function attachEvents() {
             return;
         }
         openFotosModal(cliente.foto2, cliente.foto1);
+    });
+
+    $('guardarFotosClienteSeleccionado').addEventListener('click', async () => {
+        try {
+            const clienteId = state.selectedClienteId;
+            if (!clienteId) {
+                throw new Error('Selecciona un cliente para actualizar fotos');
+            }
+
+            const foto1 = await getProcessedClienteEditPhoto('1');
+            const foto2 = await getProcessedClienteEditPhoto('2');
+
+            const body = {};
+            if (foto1) {
+                body.foto1 = foto1;
+            }
+            if (foto2) {
+                body.foto2 = foto2;
+            }
+
+            if (!Object.keys(body).length) {
+                throw new Error('Selecciona al menos una foto para actualizar');
+            }
+
+            await apiFetch(`/api/clientes/${clienteId}/fotos`, {
+                method: 'PUT',
+                body
+            });
+
+            await cargarClientes();
+            showMessage('Fotos del cliente actualizadas');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
     });
 
     $('clienteForm').addEventListener('submit', async (event) => {
@@ -1293,26 +1814,77 @@ function attachEvents() {
                     fecha: $('cajaFecha').value,
                     peluqueroId: $('cajaPeluquero').value,
                     cliente: $('cajaCliente').value.trim(),
+                    formaPago: $('cajaFormaPago').value,
                     montoCobrado: Number($('cajaMonto').value)
                 }
             });
 
             $('cajaCliente').value = '';
+            $('cajaFormaPago').value = 'efectivo';
             $('cajaMonto').value = '';
-
-            await Promise.all([cargarAtenciones(), cargarDashboard()]);
-            showMessage('Atencion registrada');
+            showMessage('Venta registrada en caja');
         } catch (error) {
             showMessage(error.message, 'error');
         }
     });
 
-    $('cargarReporte').addEventListener('click', async () => {
+    $('cargarReporteDia').addEventListener('click', async () => {
         try {
-            const desde = $('reporteDesde').value;
-            const hasta = $('reporteHasta').value;
-            const data = await apiFetch(`/api/reportes/peluqueros?desde=${desde}&hasta=${hasta}`);
-            renderReportes(data);
+            await cargarReporteDia();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('reporteFechaDia').addEventListener('change', async () => {
+        try {
+            await cargarReporteDia();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('reportePeluquero').addEventListener('change', async () => {
+        try {
+            await cargarReporteDia();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('exportarReporteDiaExcel').addEventListener('click', async () => {
+        try {
+            const fecha = $('reporteFechaDia').value;
+            if (!fecha) {
+                throw new Error('Selecciona una fecha para exportar el reporte diario');
+            }
+
+            await cargarReporteDia();
+
+            const peluqueroId = $('reportePeluquero').value || '';
+            const params = new URLSearchParams({ fecha });
+            if (peluqueroId) {
+                params.set('peluqueroId', peluqueroId);
+            }
+            await downloadFile(`/api/reportes/caja-diario-excel?${params.toString()}`, `reporte_caja_${fecha}.xlsx`);
+            showMessage('Excel diario descargado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('exportarReporteSemanalExcel').addEventListener('click', async () => {
+        try {
+            const desde = $('reporteSemanaDesde').value;
+            const hasta = $('reporteSemanaHasta').value;
+            validarRangoReportes(desde, hasta);
+
+            const params = new URLSearchParams({ desde, hasta });
+            await downloadFile(
+                `/api/reportes/caja-rango-excel?${params.toString()}`,
+                `reporte_semanal_${desde}_a_${hasta}.xlsx`
+            );
+            showMessage('Excel semanal descargado');
         } catch (error) {
             showMessage(error.message, 'error');
         }
@@ -1338,16 +1910,83 @@ function attachEvents() {
             showMessage(error.message, 'error');
         }
     });
+
+    $('usuariosTableBody').addEventListener('click', async (event) => {
+        const button = event.target.closest('button[data-action="edit-user"]');
+        if (!button) {
+            return;
+        }
+
+        const userId = button.dataset.id;
+        const user = state.usuarios.find((item) => String(item._id || item.id) === String(userId));
+        if (!user) {
+            showMessage('Usuario no encontrado', 'error');
+            return;
+        }
+
+        openEditarUsuarioModal(user);
+    });
+
+    $('cancelEditarUsuario').addEventListener('click', () => {
+        closeEditarUsuarioModal();
+    });
+
+    $('editarUsuarioModal').addEventListener('click', (event) => {
+        if (event.target.id === 'editarUsuarioModal') {
+            closeEditarUsuarioModal();
+        }
+    });
+
+    $('editarUsuarioForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const userId = $('editarUsuarioId').value;
+        const username = $('editarUsuarioNombre').value.trim();
+        const role = $('editarUsuarioRol').value;
+        const password = $('editarUsuarioPassword').value;
+
+        if (!userId) {
+            showMessage('Usuario no seleccionado', 'error');
+            return;
+        }
+
+        if (username.length < 3) {
+            showMessage('El usuario debe tener al menos 3 caracteres', 'error');
+            return;
+        }
+
+        try {
+            await apiFetch(`/api/users/${userId}`, {
+                method: 'PUT',
+                body: {
+                    username,
+                    role,
+                    password: String(password || '').trim()
+                }
+            });
+
+            await cargarUsuarios();
+            closeEditarUsuarioModal();
+            showMessage('Usuario actualizado correctamente');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
 }
 
 function setDefaultDates() {
     const value = today();
+    const turnoDefaultDate = nextOpenDate(value);
+    const monday = getMondayDateString(value);
     $('dashboardDate').value = value;
-    $('turnoFecha').value = value;
+    $('turnoFecha').value = turnoDefaultDate;
+    $('turnoHora').value = '10:00';
     $('turnosFiltroFecha').value = value;
     $('cajaFecha').value = value;
-    $('reporteDesde').value = value;
-    $('reporteHasta').value = value;
+    $('reporteFechaDia').value = value;
+    $('reporteSemanaDesde').value = monday;
+    $('reporteSemanaHasta').value = value;
+    applyTurnoDateTimeConstraints();
 }
 
 async function init() {
