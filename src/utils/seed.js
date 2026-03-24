@@ -13,6 +13,8 @@ function scheduleRange(start, end, dayStart, dayEnd) {
 async function ensureSeedData() {
     const adminUsername = (process.env.ADMIN_USER || 'admin').toLowerCase();
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const agendaUsername = (process.env.AGENDA_USER || 'agenda').toLowerCase();
+    const agendaPassword = process.env.AGENDA_PASSWORD || 'agenda123';
 
     const adminExists = await User.findOne({ username: adminUsername });
 
@@ -24,6 +26,18 @@ async function ensureSeedData() {
             role: 'admin'
         });
         console.log(`Usuario admin creado: ${adminUsername}`);
+    }
+
+    const agendaExists = await User.findOne({ username: agendaUsername });
+
+    if (!agendaExists) {
+        const passwordHash = await bcrypt.hash(agendaPassword, 10);
+        await User.create({
+            username: agendaUsername,
+            passwordHash,
+            role: 'agenda'
+        });
+        console.log(`Usuario agenda creado: ${agendaUsername}`);
     }
 
     const barbersCount = await Barber.countDocuments();
