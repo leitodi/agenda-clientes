@@ -261,6 +261,19 @@ td {
     font-size: 0.8rem;
 }
 
+.cliente-turno-info {
+    border: 1px solid #99f6e4;
+    border-radius: 10px;
+    background: #ecfeff;
+    padding: 0.7rem;
+    display: grid;
+    gap: 0.3rem;
+}
+
+.cliente-turno-info h4 {
+    margin-bottom: 0.2rem;
+}
+
 .clientes-layout {
     display: grid;
     grid-template-columns: 360px 1fr;
@@ -399,6 +412,10 @@ td {
     padding: 1rem;
     display: grid;
     gap: 0.8rem;
+}
+
+.modal-card-small {
+    width: min(520px, 95vw);
 }
 
 .modal-gallery {

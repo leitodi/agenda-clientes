@@ -16,6 +16,8 @@ const state = {
     turnos: [],
     clientes: [],
     selectedClienteId: null,
+    selectedTurnoClienteId: null,
+    pendingTurnoPayload: null,
     atenciones: [],
     usuarios: []
 };
@@ -45,6 +47,10 @@ function escapeHtml(value) {
 
 function normalizeText(value) {
     return String(value || '').trim().toLowerCase();
+}
+
+function normalizeDni(value) {
+    return String(value || '').replace(/\D/g, '').trim();
 }
 
 function showMessage(message, type = 'success') {
@@ -209,17 +215,23 @@ function completarClientesDatalist() {
     }
 
     datalist.innerHTML = state.clientes
-        .map((cliente) => `<option value="${escapeHtml(cliente.nombre)}"></option>`)
+        .map((cliente) => (
+            `<option value="${escapeHtml(cliente.nombre)}" label="DNI ${escapeHtml(cliente.dni || '-')}"></option>`
+        ))
         .join('');
 }
 
 function renderClientesList() {
     const list = $('clientesList');
-    const search = normalizeText($('clientesSearch')?.value || '');
+    const rawSearch = $('clientesSearch')?.value || '';
+    const search = normalizeText(rawSearch);
+    const searchDni = normalizeDni(rawSearch);
 
-    const visibles = state.clientes.filter((cliente) => (
-        normalizeText(cliente.nombre).includes(search)
-    ));
+    const visibles = state.clientes.filter((cliente) => {
+        const byName = normalizeText(cliente.nombre).includes(search);
+        const byDni = searchDni ? normalizeDni(cliente.dni).includes(searchDni) : false;
+        return byName || byDni;
+    });
 
     if (!visibles.length) {
         list.innerHTML = '<p class="cliente-vacio">No hay clientes cargados.</p>';
@@ -229,6 +241,7 @@ function renderClientesList() {
     list.innerHTML = visibles.map((cliente) => `
         <div class="cliente-item ${state.selectedClienteId === cliente._id ? 'active' : ''}" data-action="select-cliente" data-id="${cliente._id}">
             <strong>${escapeHtml(cliente.nombre)}</strong>
+            <small>DNI: ${escapeHtml(cliente.dni || '-')}</small>
             <small>${cliente.ultimaAtencion ? `Ultima atencion: ${escapeHtml(cliente.ultimaAtencion)}` : 'Sin atenciones'}</small>
         </div>
     `).join('');
@@ -246,6 +259,7 @@ function renderClienteDetalle() {
     $('clienteDetalleVacio').classList.add('hidden');
     $('clienteDetalle').classList.remove('hidden');
     $('clienteNombre').textContent = cliente.nombre || '-';
+    $('clienteDni').textContent = cliente.dni || '-';
     $('clienteTelefono').textContent = cliente.telefono || '-';
     $('clienteInstagram').textContent = cliente.instagram || '-';
     $('clienteUltimaAtencion').textContent = cliente.ultimaAtencion || '-';
@@ -274,6 +288,81 @@ function selectCliente(clienteId) {
     state.selectedClienteId = clienteId;
     renderClientesList();
     renderClienteDetalle();
+}
+
+function splitFullName(fullName) {
+    const text = String(fullName || '').trim();
+    if (!text) {
+        return { nombre: '', apellido: '' };
+    }
+
+    const parts = text.split(/\s+/);
+    return {
+        nombre: parts.shift() || '',
+        apellido: parts.join(' ')
+    };
+}
+
+function findClienteByNombre(nombre) {
+    const target = normalizeText(nombre);
+    if (!target) {
+        return null;
+    }
+    return state.clientes.find((cliente) => normalizeText(cliente.nombre) === target) || null;
+}
+
+function updateTurnoClienteInfo(cliente) {
+    const card = $('turnoClienteInfo');
+    if (!cliente) {
+        card.classList.add('hidden');
+        $('turnoClienteInfoNombre').textContent = '-';
+        $('turnoClienteInfoDni').textContent = '-';
+        $('turnoClienteInfoTelefono').textContent = '-';
+        $('turnoClienteInfoInstagram').textContent = '-';
+        return;
+    }
+
+    card.classList.remove('hidden');
+    $('turnoClienteInfoNombre').textContent = cliente.nombre || '-';
+    $('turnoClienteInfoDni').textContent = cliente.dni || '-';
+    $('turnoClienteInfoTelefono').textContent = cliente.telefono || '-';
+    $('turnoClienteInfoInstagram').textContent = cliente.instagram || '-';
+}
+
+function syncTurnoClienteByInput() {
+    const clienteNombre = $('turnoCliente').value.trim();
+    if (!clienteNombre) {
+        state.selectedTurnoClienteId = null;
+        updateTurnoClienteInfo(null);
+        return null;
+    }
+
+    const cliente = findClienteByNombre(clienteNombre);
+    if (!cliente) {
+        state.selectedTurnoClienteId = null;
+        updateTurnoClienteInfo(null);
+        return null;
+    }
+
+    state.selectedTurnoClienteId = cliente._id;
+    $('turnoCliente').value = cliente.nombre;
+    updateTurnoClienteInfo(cliente);
+    return cliente;
+}
+
+function openNuevoClienteTurnoModal(nombreCompleto) {
+    const modal = $('nuevoClienteTurnoModal');
+    const parsed = splitFullName(nombreCompleto);
+    $('nuevoClienteTurnoNombre').value = parsed.nombre;
+    $('nuevoClienteTurnoApellido').value = parsed.apellido;
+    $('nuevoClienteTurnoDni').value = '';
+    $('nuevoClienteTurnoTelefono').value = '';
+    $('nuevoClienteTurnoInstagram').value = '';
+    modal.classList.remove('hidden');
+}
+
+function closeNuevoClienteTurnoModal() {
+    $('nuevoClienteTurnoModal').classList.add('hidden');
 }
 
 function renderCajaTable() {
@@ -689,6 +778,24 @@ function openTurnoFotoModal(turnoId) {
     openFotosModal(turno.foto1, turno.foto2);
 }
 
+async function registrarTurno(payload) {
+    await apiFetch('/api/turnos', {
+        method: 'POST',
+        body: payload
+    });
+
+    $('turnoCliente').value = '';
+    state.selectedTurnoClienteId = null;
+    updateTurnoClienteInfo(null);
+    clearTurnoPhotos();
+
+    await Promise.all([
+        cargarTurnos(),
+        cargarClientes(),
+        !isAgendaRole() ? cargarDashboard() : Promise.resolve()
+    ]);
+}
+
 async function cargarConfig() {
     try {
         const config = await apiFetch('/api/config', { auth: false });
@@ -726,6 +833,11 @@ async function cargarClientes() {
     }
 
     renderClienteDetalle();
+
+    if (state.selectedTurnoClienteId) {
+        const clienteTurno = state.clientes.find((item) => item._id === state.selectedTurnoClienteId) || null;
+        updateTurnoClienteInfo(clienteTurno);
+    }
 }
 
 async function cargarTurnos() {
@@ -901,6 +1013,26 @@ function attachEvents() {
         }
     });
 
+    $('turnoCliente').addEventListener('input', () => {
+        syncTurnoClienteByInput();
+    });
+
+    $('turnoCliente').addEventListener('blur', () => {
+        syncTurnoClienteByInput();
+    });
+
+    $('cancelNuevoClienteTurno').addEventListener('click', () => {
+        state.pendingTurnoPayload = null;
+        closeNuevoClienteTurnoModal();
+    });
+
+    $('nuevoClienteTurnoModal').addEventListener('click', (event) => {
+        if (event.target.id === 'nuevoClienteTurnoModal') {
+            state.pendingTurnoPayload = null;
+            closeNuevoClienteTurnoModal();
+        }
+    });
+
     $('turnoForm').addEventListener('submit', async (event) => {
         event.preventDefault();
 
@@ -908,32 +1040,68 @@ function attachEvents() {
             const foto1 = await getProcessedTurnoPhoto('1');
             const foto2 = await getProcessedTurnoPhoto('2');
             const clienteNombre = $('turnoCliente').value.trim();
-            const clienteCoincidente = state.clientes.find((cliente) => (
-                normalizeText(cliente.nombre) === normalizeText(clienteNombre)
-            ));
+            const clienteCoincidente = syncTurnoClienteByInput();
 
-            await apiFetch('/api/turnos', {
+            const payload = {
+                fecha: $('turnoFecha').value,
+                hora: $('turnoHora').value,
+                peluqueroId: $('turnoPeluquero').value,
+                servicio: $('turnoServicio').value,
+                cliente: clienteNombre,
+                clienteId: clienteCoincidente?._id || null,
+                foto1,
+                foto2
+            };
+
+            if (clienteNombre && !clienteCoincidente) {
+                state.pendingTurnoPayload = payload;
+                openNuevoClienteTurnoModal(clienteNombre);
+                showMessage('Cliente no encontrado. Completa el popup para crearlo.', 'error');
+                return;
+            }
+
+            await registrarTurno(payload);
+            showMessage('Turno guardado correctamente');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('nuevoClienteTurnoForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const saved = await apiFetch('/api/clientes', {
                 method: 'POST',
                 body: {
-                    fecha: $('turnoFecha').value,
-                    hora: $('turnoHora').value,
-                    peluqueroId: $('turnoPeluquero').value,
-                    servicio: $('turnoServicio').value,
-                    cliente: clienteNombre,
-                    clienteId: clienteCoincidente?._id || null,
-                    foto1,
-                    foto2
+                    nombre: $('nuevoClienteTurnoNombre').value.trim(),
+                    apellido: $('nuevoClienteTurnoApellido').value.trim(),
+                    dni: $('nuevoClienteTurnoDni').value.trim(),
+                    telefono: $('nuevoClienteTurnoTelefono').value.trim(),
+                    instagram: $('nuevoClienteTurnoInstagram').value.trim()
                 }
             });
 
-            $('turnoCliente').value = '';
-            clearTurnoPhotos();
-            await Promise.all([
-                cargarTurnos(),
-                cargarClientes(),
-                !isAgendaRole() ? cargarDashboard() : Promise.resolve()
-            ]);
-            showMessage('Turno guardado correctamente');
+            await cargarClientes();
+
+            $('turnoCliente').value = saved.nombre;
+            state.selectedTurnoClienteId = saved._id;
+            updateTurnoClienteInfo(saved);
+            closeNuevoClienteTurnoModal();
+
+            if (state.pendingTurnoPayload) {
+                const payload = {
+                    ...state.pendingTurnoPayload,
+                    cliente: saved.nombre,
+                    clienteId: saved._id
+                };
+                state.pendingTurnoPayload = null;
+                await registrarTurno(payload);
+                showMessage('Cliente creado y turno guardado correctamente');
+                return;
+            }
+
+            showMessage('Cliente creado correctamente');
         } catch (error) {
             showMessage(error.message, 'error');
         }
@@ -989,9 +1157,14 @@ function attachEvents() {
         try {
             const nombre = $('clienteNombreInput').value.trim();
             const apellido = $('clienteApellidoInput').value.trim();
+            const dni = $('clienteDniInput').value.trim();
 
             if (!nombre || !apellido) {
                 throw new Error('Nombre y apellido son obligatorios');
+            }
+
+            if (!dni) {
+                throw new Error('El DNI es obligatorio');
             }
 
             const foto1 = await getProcessedClientePhoto('1');
@@ -1006,6 +1179,7 @@ function attachEvents() {
                 body: {
                     nombre,
                     apellido,
+                    dni,
                     telefono: $('clienteTelefonoInput').value.trim(),
                     instagram: $('clienteInstagramInput').value.trim(),
                     foto1,

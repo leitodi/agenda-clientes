@@ -91,6 +91,13 @@
                         <input id="turnoCliente" type="text" placeholder="Nombre del cliente" list="clientesDatalist">
                     </label>
                     <datalist id="clientesDatalist"></datalist>
+                    <article id="turnoClienteInfo" class="cliente-turno-info hidden">
+                        <h4>Cliente encontrado</h4>
+                        <p><strong>Nombre:</strong> <span id="turnoClienteInfoNombre">-</span></p>
+                        <p><strong>DNI:</strong> <span id="turnoClienteInfoDni">-</span></p>
+                        <p><strong>Telefono:</strong> <span id="turnoClienteInfoTelefono">-</span></p>
+                        <p><strong>Instagram:</strong> <span id="turnoClienteInfoInstagram">-</span></p>
+                    </article>
                     <div class="foto-upload-group">
                         <label>Foto cliente 1 (opcional)</label>
                         <input id="turnoFoto1" type="file" accept="image/*" class="hidden-file-input">
@@ -154,6 +161,10 @@
                                 <input id="clienteApellidoInput" type="text" required>
                             </label>
                             <label>
+                                DNI
+                                <input id="clienteDniInput" type="text" inputmode="numeric" required>
+                            </label>
+                            <label>
                                 Telefono
                                 <input id="clienteTelefonoInput" type="text" placeholder="351...">
                             </label>
@@ -199,6 +210,7 @@
                             <div id="clienteDetalleVacio" class="cliente-vacio">Selecciona un cliente para ver su detalle.</div>
                             <div id="clienteDetalle" class="hidden">
                                 <h4 id="clienteNombre"></h4>
+                                <p><strong>DNI:</strong> <span id="clienteDni">-</span></p>
                                 <p><strong>Telefono:</strong> <span id="clienteTelefono">-</span></p>
                                 <p><strong>Instagram:</strong> <span id="clienteInstagram">-</span></p>
                                 <p><strong>Ultima atencion:</strong> <span id="clienteUltimaAtencion">-</span></p>
@@ -372,6 +384,39 @@
                 <img id="turnoModalFoto1" alt="Foto 1">
                 <img id="turnoModalFoto2" alt="Foto 2">
             </div>
+        </div>
+    </div>
+
+    <div id="nuevoClienteTurnoModal" class="modal hidden">
+        <div class="modal-card modal-card-small">
+            <h3>Nuevo cliente</h3>
+            <p>Este cliente no existe en la base. Completa los datos para continuar con el turno.</p>
+            <form id="nuevoClienteTurnoForm" class="form-grid">
+                <label>
+                    Nombre
+                    <input id="nuevoClienteTurnoNombre" type="text" required>
+                </label>
+                <label>
+                    Apellido
+                    <input id="nuevoClienteTurnoApellido" type="text" required>
+                </label>
+                <label>
+                    DNI
+                    <input id="nuevoClienteTurnoDni" type="text" inputmode="numeric" required>
+                </label>
+                <label>
+                    Telefono
+                    <input id="nuevoClienteTurnoTelefono" type="text" placeholder="351...">
+                </label>
+                <label>
+                    Instagram
+                    <input id="nuevoClienteTurnoInstagram" type="text" placeholder="@usuario">
+                </label>
+                <div class="inline-actions">
+                    <button type="submit" class="btn primary">Guardar y continuar</button>
+                    <button id="cancelNuevoClienteTurno" type="button" class="btn danger">Cancelar</button>
+                </div>
+            </form>
         </div>
     </div>
 
