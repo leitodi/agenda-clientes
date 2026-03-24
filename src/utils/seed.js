@@ -31,37 +31,58 @@ async function ensureSeedData() {
     const agendaUsername = (process.env.AGENDA_USER || 'agenda').toLowerCase();
     const agendaPassword = process.env.AGENDA_PASSWORD || 'agenda123';
 
-    const adminExists = await User.findOne({ username: adminUsername });
+    async function ensureAccessUser({ username, password, role, label }) {
+        let user = await User.findOne({ username });
 
-    if (!adminExists) {
-        const passwordHash = await bcrypt.hash(adminPassword, 10);
-        await User.create({
-            username: adminUsername,
-            passwordHash,
-            passwordVisible: adminPassword,
-            role: 'admin'
-        });
-        console.log(`Usuario admin creado: ${adminUsername}`);
-    } else if (!adminExists.passwordVisible) {
-        adminExists.passwordVisible = adminPassword;
-        await adminExists.save();
+        if (!user) {
+            const passwordHash = await bcrypt.hash(password, 10);
+            await User.create({
+                username,
+                passwordHash,
+                passwordVisible: password,
+                role
+            });
+            console.log(`Usuario ${label} creado: ${username}`);
+            return;
+        }
+
+        let hasChanges = false;
+
+        if (user.role !== role) {
+            user.role = role;
+            hasChanges = true;
+        }
+
+        const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+        if (!passwordMatches) {
+            user.passwordHash = await bcrypt.hash(password, 10);
+            hasChanges = true;
+        }
+
+        if (user.passwordVisible !== password) {
+            user.passwordVisible = password;
+            hasChanges = true;
+        }
+
+        if (hasChanges) {
+            await user.save();
+            console.log(`Usuario ${label} sincronizado: ${username}`);
+        }
     }
 
-    const agendaExists = await User.findOne({ username: agendaUsername });
+    await ensureAccessUser({
+        username: adminUsername,
+        password: adminPassword,
+        role: 'admin',
+        label: 'admin'
+    });
 
-    if (!agendaExists) {
-        const passwordHash = await bcrypt.hash(agendaPassword, 10);
-        await User.create({
-            username: agendaUsername,
-            passwordHash,
-            passwordVisible: agendaPassword,
-            role: 'agenda'
-        });
-        console.log(`Usuario agenda creado: ${agendaUsername}`);
-    } else if (!agendaExists.passwordVisible) {
-        agendaExists.passwordVisible = agendaPassword;
-        await agendaExists.save();
-    }
+    await ensureAccessUser({
+        username: agendaUsername,
+        password: agendaPassword,
+        role: 'agenda',
+        label: 'agenda'
+    });
 
     let barbers = await Barber.find().sort({ nombre: 1 });
 
