@@ -389,16 +389,18 @@ function renderTurnosTable() {
 }
 
 function completarClientesDatalist() {
-    const datalist = $('clientesDatalist');
-    if (!datalist) {
-        return;
-    }
-
-    datalist.innerHTML = state.clientes
+    const options = state.clientes
         .map((cliente) => (
-            `<option value="${escapeHtml(cliente.nombre)}" label="DNI ${escapeHtml(cliente.dni || '-')}"></option>`
+            `<option value="${escapeHtml(cliente.nombre)}" label="Tel ${escapeHtml(cliente.telefono || '-')} | DNI ${escapeHtml(cliente.dni || '-')}"></option>`
         ))
         .join('');
+
+    ['clientesDatalist', 'cajaClientesDatalist'].forEach((id) => {
+        const datalist = $(id);
+        if (datalist) {
+            datalist.innerHTML = options;
+        }
+    });
 }
 
 function renderClientesList() {
@@ -410,7 +412,8 @@ function renderClientesList() {
     const visibles = state.clientes.filter((cliente) => {
         const byName = normalizeText(cliente.nombre).includes(search);
         const byDni = searchDni ? normalizeDni(cliente.dni).includes(searchDni) : false;
-        return byName || byDni;
+        const byPhone = searchDni ? normalizeDni(cliente.telefono).includes(searchDni) : false;
+        return byName || byDni || byPhone;
     });
 
     if (!visibles.length) {
@@ -422,7 +425,11 @@ function renderClientesList() {
         <div class="cliente-item ${state.selectedClienteId === cliente._id ? 'active' : ''}" data-action="select-cliente" data-id="${cliente._id}">
             <strong>${escapeHtml(cliente.nombre)}</strong>
             <small>DNI: ${escapeHtml(cliente.dni || '-')}</small>
-            <small>${cliente.ultimaAtencion ? `Ultima atencion: ${escapeHtml(cliente.ultimaAtencion)}` : 'Sin atenciones'}</small>
+            <small>
+                ${cliente.ultimaAtencion
+        ? `Ultima atencion: ${escapeHtml(cliente.ultimaAtencion)}${cliente.ultimaAtencionPeluquero ? ` - ${escapeHtml(cliente.ultimaAtencionPeluquero)}` : ''}`
+        : 'Sin atenciones'}
+            </small>
         </div>
     `).join('');
 }
@@ -443,7 +450,9 @@ function renderClienteDetalle() {
     $('clienteDni').textContent = cliente.dni || '-';
     $('clienteTelefono').textContent = cliente.telefono || '-';
     $('clienteInstagram').textContent = cliente.instagram || '-';
+    $('clienteFechaCumple').textContent = cliente.fechaCumpleanos || '-';
     $('clienteUltimaAtencion').textContent = cliente.ultimaAtencion || '-';
+    $('clienteUltimaAtencionPeluquero').textContent = cliente.ultimaAtencionPeluquero || '-';
     clearClienteEditPhotos();
 
     const foto1 = $('clienteFoto1');
@@ -563,6 +572,7 @@ function openNuevoClienteTurnoModal(nombreCompleto) {
     $('nuevoClienteTurnoDni').value = '';
     $('nuevoClienteTurnoTelefono').value = '';
     $('nuevoClienteTurnoInstagram').value = '';
+    $('nuevoClienteTurnoFechaCumple').value = '';
     modal.classList.remove('hidden');
 }
 
@@ -1545,7 +1555,8 @@ function attachEvents() {
                     apellido: $('nuevoClienteTurnoApellido').value.trim(),
                     dni: $('nuevoClienteTurnoDni').value.trim(),
                     telefono: $('nuevoClienteTurnoTelefono').value.trim(),
-                    instagram: $('nuevoClienteTurnoInstagram').value.trim()
+                    instagram: $('nuevoClienteTurnoInstagram').value.trim(),
+                    fechaCumpleanos: $('nuevoClienteTurnoFechaCumple').value
                 }
             });
 
@@ -1684,10 +1695,6 @@ function attachEvents() {
                 throw new Error('Nombre y apellido son obligatorios');
             }
 
-            if (!dni) {
-                throw new Error('El DNI es obligatorio');
-            }
-
             const foto1 = await getProcessedClientePhoto('1');
             const foto2 = await getProcessedClientePhoto('2');
 
@@ -1703,6 +1710,7 @@ function attachEvents() {
                     dni,
                     telefono: $('clienteTelefonoInput').value.trim(),
                     instagram: $('clienteInstagramInput').value.trim(),
+                    fechaCumpleanos: $('clienteFechaCumpleInput').value,
                     foto1,
                     foto2
                 }

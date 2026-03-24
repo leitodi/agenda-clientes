@@ -12,40 +12,38 @@ function normalizeDni(value) {
     return String(value || '').replace(/\D/g, '').trim();
 }
 
+function normalizePhone(value) {
+    return String(value || '').replace(/\D/g, '').trim();
+}
+
 router.get('/', authRequired, async (req, res) => {
     const clientes = await Client.find().sort({ nombre: 1 });
     return res.json(clientes);
 });
 
 router.post('/', authRequired, async (req, res) => {
-    const { nombre, apellido, dni, telefono, instagram, foto1, foto2 } = req.body;
+    const { nombre, apellido, dni, telefono, instagram, fechaCumpleanos, foto1, foto2 } = req.body;
 
     const fullName = `${String(nombre || '').trim()} ${String(apellido || '').trim()}`.trim();
     const dniNormalizado = normalizeDni(dni);
+    const telefonoRaw = String(telefono || '').trim();
+    const telefonoNormalizado = normalizePhone(telefonoRaw);
 
     if (!fullName) {
         return res.status(400).json({ error: 'Nombre y apellido son requeridos' });
     }
 
-    if (!dniNormalizado) {
-        return res.status(400).json({ error: 'El DNI es requerido' });
-    }
-
     const nombreNormalizado = normalizeName(fullName);
-
-    const existingByDni = await Client.findOne({ dni: dniNormalizado });
-    const existingByName = await Client.findOne({ nombreNormalizado });
-
-    if (existingByDni && existingByName && String(existingByDni._id) !== String(existingByName._id)) {
-        return res.status(400).json({ error: 'Ya existe un cliente con ese DNI' });
-    }
-
-    const existing = existingByDni || existingByName;
+    const existing = telefonoNormalizado ? await Client.findOne({ telefonoNormalizado }) : null;
     if (existing) {
         existing.nombre = fullName;
         existing.dni = dniNormalizado;
-        existing.telefono = String(telefono || '').trim();
+        existing.telefono = telefonoRaw;
+        existing.telefonoNormalizado = telefonoNormalizado;
         existing.instagram = String(instagram || '').trim();
+        if (fechaCumpleanos !== undefined) {
+            existing.fechaCumpleanos = String(fechaCumpleanos || '').trim();
+        }
         if (foto1) {
             existing.foto1 = String(foto1);
         }
@@ -60,8 +58,10 @@ router.post('/', authRequired, async (req, res) => {
         nombre: fullName,
         nombreNormalizado,
         dni: dniNormalizado,
-        telefono: String(telefono || '').trim(),
+        telefono: telefonoRaw,
+        telefonoNormalizado,
         instagram: String(instagram || '').trim(),
+        fechaCumpleanos: String(fechaCumpleanos || '').trim(),
         foto1: String(foto1 || ''),
         foto2: String(foto2 || '')
     });

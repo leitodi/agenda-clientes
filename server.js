@@ -13,6 +13,7 @@ const attendanceRoutes = require('./src/routes/attendances');
 const reportRoutes = require('./src/routes/reports');
 const dashboardRoutes = require('./src/routes/dashboard');
 const clientRoutes = require('./src/routes/clients');
+const Client = require('./src/models/Client');
 const { ensureSeedData } = require('./src/utils/seed');
 const { SERVICE_TYPES } = require('./src/utils/services');
 
@@ -49,11 +50,60 @@ app.use((error, req, res, next) => {
     res.status(500).json({ error: 'Error interno del servidor' });
 });
 
+async function ensureClientIndexes() {
+    const collection = mongoose.connection.collection('clients');
+
+    try {
+        const indexes = await collection.indexes();
+        const uniqueByName = indexes.find((index) => index.name === 'nombreNormalizado_1' && index.unique);
+
+        if (uniqueByName) {
+            await collection.dropIndex('nombreNormalizado_1');
+            console.log('Indice unico nombreNormalizado_1 eliminado');
+        }
+    } catch (error) {
+        console.warn('No se pudo revisar/eliminar indice nombreNormalizado_1:', error.message);
+    }
+
+    try {
+        await collection.createIndex({ nombreNormalizado: 1 }, { name: 'nombreNormalizado_1' });
+        await collection.createIndex({ telefonoNormalizado: 1 }, { name: 'telefonoNormalizado_1' });
+    } catch (error) {
+        console.warn('No se pudieron crear indices de clientes:', error.message);
+    }
+
+    try {
+        const clientesSinTelefonoNormalizado = await Client.find({
+            telefono: { $exists: true, $ne: '' },
+            $or: [{ telefonoNormalizado: { $exists: false } }, { telefonoNormalizado: '' }]
+        }).select('_id telefono');
+
+        if (clientesSinTelefonoNormalizado.length) {
+            const operations = clientesSinTelefonoNormalizado.map((cliente) => ({
+                updateOne: {
+                    filter: { _id: cliente._id },
+                    update: {
+                        $set: {
+                            telefonoNormalizado: String(cliente.telefono || '').replace(/\D/g, '').trim()
+                        }
+                    }
+                }
+            }));
+
+            await Client.bulkWrite(operations);
+            console.log(`Clientes actualizados con telefonoNormalizado: ${clientesSinTelefonoNormalizado.length}`);
+        }
+    } catch (error) {
+        console.warn('No se pudo normalizar telefono de clientes existentes:', error.message);
+    }
+}
+
 async function startServer() {
     try {
         await mongoose.connect(MONGODB_URI);
         console.log('Conectado a MongoDB');
 
+        await ensureClientIndexes();
         await ensureSeedData();
 
         app.listen(PORT, () => {

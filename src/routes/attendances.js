@@ -1,7 +1,7 @@
 const express = require('express');
 const Attendance = require('../models/Attendance');
 const Barber = require('../models/Barber');
-const { authRequired, notAgendaRequired } = require('../middleware/auth');
+const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -9,7 +9,7 @@ function isValidDateString(date) {
     return /^\d{4}-\d{2}-\d{2}$/.test(date);
 }
 
-router.get('/', authRequired, notAgendaRequired, async (req, res) => {
+router.get('/', authRequired, async (req, res) => {
     const { desde, hasta, peluqueroId } = req.query;
     const filter = {};
 
@@ -31,7 +31,7 @@ router.get('/', authRequired, notAgendaRequired, async (req, res) => {
     return res.json(atenciones);
 });
 
-router.post('/', authRequired, notAgendaRequired, async (req, res) => {
+router.post('/', authRequired, async (req, res) => {
     const { fecha, peluqueroId, cliente, formaPago, montoCobrado } = req.body;
 
     if (!isValidDateString(fecha) || !peluqueroId || montoCobrado === undefined) {
@@ -44,7 +44,7 @@ router.post('/', authRequired, notAgendaRequired, async (req, res) => {
     }
 
     const formaPagoNormalizada = String(formaPago || '').trim().toLowerCase();
-    if (!['efectivo', 'transferencia'].includes(formaPagoNormalizada)) {
+    if (!['efectivo', 'transferencia', 'tarjeta'].includes(formaPagoNormalizada)) {
         return res.status(400).json({ error: 'Forma de pago invalida' });
     }
 
