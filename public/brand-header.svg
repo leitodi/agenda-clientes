@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520" role="img" aria-labelledby="title desc">
+  <title id="title">Salon Milano</title>
+  <desc id="desc">Salon Milano - More than a Barbershop</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#040404"/>
+      <stop offset="100%" stop-color="#111111"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="520" fill="url(#bg)"/>
+  <g fill="#ffffff" text-anchor="middle">
+    <text x="800" y="250" font-size="122" font-family="Arial Black, Arial, sans-serif" letter-spacing="2">SALON MILANO</text>
+    <text x="800" y="345" font-size="74" font-family="Georgia, Times New Roman, serif">More than a Barbershop</text>
+  </g>
+</svg>

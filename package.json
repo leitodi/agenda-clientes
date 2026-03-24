@@ -1,20 +1,28 @@
 {
-  "name": "agenda-clientes",
-  "version": "1.1.0",
-  "description": "Sistema de agenda de clientes con MongoDB",
+  "name": "agenda-peluqueria",
+  "version": "2.0.0",
+  "description": "Sistema de gestion para peluqueria: login, turnos, caja y reportes",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
   },
-  "keywords": ["agenda", "clientes", "mongodb", "render"],
+  "keywords": [
+    "agenda",
+    "peluqueria",
+    "turnos",
+    "mongodb",
+    "render"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.1"
   }
 }

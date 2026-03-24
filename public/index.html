@@ -3,90 +3,374 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agenda de Clientes</title>
+    <title>Gestion de Peluqueria</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Navegación -->
-    <nav class="navbar">
-        <div class="container">
-            <div class="logo">📅 Agenda de Clientes</div>
-        </div>
-    </nav>
+    <main class="container">
+        <section class="brand-header card">
+            <img src="imagenes/salon_milano.jpeg" alt="Salon Milano" class="brand-header-image">
+        </section>
+        <section id="loginView" class="card login-card">
+            <h1>Agenda de Peluqueria</h1>
+            <p>Ingresa con tu usuario para administrar turnos, caja y reportes.</p>
+            <form id="loginForm" class="form-grid">
+                <label>
+                    Usuario
+                    <input id="loginUsername" type="text" required autocomplete="username">
+                </label>
+                <label>
+                    Contrasena
+                    <input id="loginPassword" type="password" required autocomplete="current-password">
+                </label>
+                <button type="submit" class="btn primary">Ingresar</button>
+            </form>
+        </section>
 
-    <div class="container">
-        <div class="agenda-wrapper">
-            <!-- Sección de Formulario -->
-            <section class="formulario-section">
-                <h2>Agregar Cliente</h2>
-                <form id="clienteForm" class="form-cliente">
-                    <div class="form-group">
-                        <label for="nombre">Nombre:</label>
-                        <input type="text" id="nombre" placeholder="Nombre del cliente" required>
-                    </div>
+        <section id="appView" class="hidden">
+            <header class="topbar card">
+                <div>
+                    <h2>Panel de Gestion</h2>
+                    <p id="sessionInfo"></p>
+                </div>
+                <button id="logoutBtn" class="btn danger" type="button">Cerrar sesion</button>
+            </header>
 
-                    <div class="form-group">
-                        <label for="telefono">Teléfono:</label>
-                        <input type="tel" id="telefono" placeholder="Número de teléfono" required>
-                    </div>
+            <div id="appMessage" class="message hidden"></div>
 
-                    <div class="form-group">
-                        <label for="instagram">Instagram:</label>
-                        <input type="text" id="instagram" placeholder="@usuario_instagram">
-                    </div>
+            <nav class="tabs card">
+                <button class="tab-btn active restricted-agenda" data-tab="dashboard">Dashboard</button>
+                <button class="tab-btn" data-tab="turnos">Agenda de Turnos</button>
+                <button class="tab-btn" data-tab="clientes">Clientes</button>
+                <button class="tab-btn admin-only" data-tab="peluqueros">Peluqueros</button>
+                <button class="tab-btn restricted-agenda" data-tab="caja">Caja</button>
+                <button class="tab-btn restricted-agenda" data-tab="reportes">Reportes</button>
+                <button class="tab-btn admin-only" data-tab="usuarios">Usuarios</button>
+            </nav>
 
-                    <div class="form-group fotos-group">
-                        <label>Foto 1:</label>
-                        <div class="foto-container">
-                            <input type="file" id="foto1" accept="image/*" capture="environment" class="foto-input">
-                            <label for="foto1" class="foto-label">+ Cargar Foto 1</label>
-                            <img id="preview-foto1" class="foto-preview" alt="Vista previa">
-                        </div>
-                    </div>
-
-                    <div class="form-group fotos-group">
-                        <label>Foto 2:</label>
-                        <div class="foto-container">
-                            <input type="file" id="foto2" accept="image/*" capture="environment" class="foto-input">
-                            <label for="foto2" class="foto-label">+ Cargar Foto 2</label>
-                            <img id="preview-foto2" class="foto-preview" alt="Vista previa">
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary">Guardar Cliente</button>
-                </form>
+            <section id="tab-dashboard" class="tab-panel card restricted-agenda">
+                <h3>Resumen diario</h3>
+                <div class="inline-actions">
+                    <label>
+                        Fecha
+                        <input id="dashboardDate" type="date">
+                    </label>
+                    <button id="refreshDashboard" class="btn" type="button">Actualizar</button>
+                </div>
+                <div class="kpi-grid">
+                    <article class="kpi"><span>Turnos</span><strong id="kpiTurnos">0</strong></article>
+                    <article class="kpi"><span>Atenciones</span><strong id="kpiAtenciones">0</strong></article>
+                    <article class="kpi"><span>Peluqueros activos</span><strong id="kpiPeluqueros">0</strong></article>
+                </div>
             </section>
 
-            <!-- Sección de Listado y Detalles -->
-            <section class="listado-section">
-                <h2>Mis Clientes</h2>
-                
-                <div class="listado-container">
-                    <!-- Listado de Clientes -->
-                    <div class="clientes-list-wrapper">
-                        <div id="clientesList" class="clientes-list">
-                            <p class="empty-message">Cargando clientes...</p>
+            <section id="tab-turnos" class="tab-panel card hidden">
+                <h3>Agenda de Turnos</h3>
+                <form id="turnoForm" class="form-grid">
+                    <label>
+                        Fecha
+                        <input id="turnoFecha" type="date" required>
+                    </label>
+                    <label>
+                        Hora
+                        <input id="turnoHora" type="time" step="900" required>
+                    </label>
+                    <label>
+                        Peluquero
+                        <select id="turnoPeluquero" required></select>
+                    </label>
+                    <label>
+                        Servicio
+                        <select id="turnoServicio" required>
+                            <option value="corte">Corte (30 min)</option>
+                            <option value="corte_barba">Corte + barba (45 min)</option>
+                        </select>
+                    </label>
+                    <label>
+                        Cliente (opcional)
+                        <input id="turnoCliente" type="text" placeholder="Nombre del cliente" list="clientesDatalist">
+                    </label>
+                    <datalist id="clientesDatalist"></datalist>
+                    <div class="foto-upload-group">
+                        <label>Foto cliente 1 (opcional)</label>
+                        <input id="turnoFoto1" type="file" accept="image/*" class="hidden-file-input">
+                        <div class="inline-actions">
+                            <button type="button" class="btn" onclick="openTurnoPhotoPicker('1','camera')">Tomar foto</button>
+                            <button type="button" class="btn" onclick="openTurnoPhotoPicker('1','gallery')">Elegir existente</button>
                         </div>
+                        <small id="turnoFoto1Estado" class="photo-status"></small>
+                        <img id="turnoFoto1Preview" class="turno-photo-preview hidden" alt="Foto cliente 1">
                     </div>
-
-                    <!-- Detalles del Cliente -->
-                    <div class="cliente-detalles-wrapper">
-                        <div id="clienteDetalles" class="cliente-detalles">
-                            <p class="empty-message">Selecciona un cliente para ver los detalles</p>
+                    <div class="foto-upload-group">
+                        <label>Foto cliente 2 (opcional)</label>
+                        <input id="turnoFoto2" type="file" accept="image/*" class="hidden-file-input">
+                        <div class="inline-actions">
+                            <button type="button" class="btn" onclick="openTurnoPhotoPicker('2','camera')">Tomar foto</button>
+                            <button type="button" class="btn" onclick="openTurnoPhotoPicker('2','gallery')">Elegir existente</button>
                         </div>
+                        <small id="turnoFoto2Estado" class="photo-status"></small>
+                        <img id="turnoFoto2Preview" class="turno-photo-preview hidden" alt="Foto cliente 2">
+                    </div>
+                    <button type="submit" class="btn primary">Guardar turno</button>
+                </form>
+
+                <div class="inline-actions">
+                    <label>
+                        Ver fecha
+                        <input id="turnosFiltroFecha" type="date">
+                    </label>
+                    <button id="reloadTurnos" class="btn" type="button">Buscar</button>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Hora</th>
+                                <th>Peluquero</th>
+                                <th>Servicio</th>
+                                <th>Cliente</th>
+                                <th>Fotos</th>
+                                <th>Accion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="turnosTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="tab-clientes" class="tab-panel card hidden">
+                <h3>Agenda de Clientes</h3>
+                <div class="clientes-layout">
+                    <aside class="clientes-form-panel">
+                        <h4>Nuevo cliente</h4>
+                        <form id="clienteForm" class="form-grid">
+                            <label>
+                                Nombre
+                                <input id="clienteNombreInput" type="text" required>
+                            </label>
+                            <label>
+                                Apellido
+                                <input id="clienteApellidoInput" type="text" required>
+                            </label>
+                            <label>
+                                Telefono
+                                <input id="clienteTelefonoInput" type="text" placeholder="351...">
+                            </label>
+                            <label>
+                                Instagram
+                                <input id="clienteInstagramInput" type="text" placeholder="@usuario">
+                            </label>
+
+                            <div class="foto-upload-group">
+                                <label>Foto 1</label>
+                                <input id="clienteFoto1Input" type="file" accept="image/*" class="hidden-file-input">
+                                <div class="inline-actions">
+                                    <button type="button" class="btn" onclick="openClientePhotoPicker('1','camera')">Tomar foto</button>
+                                    <button type="button" class="btn" onclick="openClientePhotoPicker('1','gallery')">Elegir existente</button>
+                                </div>
+                                <small id="clienteFoto1Estado" class="photo-status"></small>
+                                <img id="clienteFoto1Preview" class="turno-photo-preview hidden" alt="Foto cliente 1">
+                            </div>
+
+                            <div class="foto-upload-group">
+                                <label>Foto 2</label>
+                                <input id="clienteFoto2Input" type="file" accept="image/*" class="hidden-file-input">
+                                <div class="inline-actions">
+                                    <button type="button" class="btn" onclick="openClientePhotoPicker('2','camera')">Tomar foto</button>
+                                    <button type="button" class="btn" onclick="openClientePhotoPicker('2','gallery')">Elegir existente</button>
+                                </div>
+                                <small id="clienteFoto2Estado" class="photo-status"></small>
+                                <img id="clienteFoto2Preview" class="turno-photo-preview hidden" alt="Foto cliente 2">
+                            </div>
+
+                            <button type="submit" class="btn primary">Guardar cliente</button>
+                        </form>
+                    </aside>
+                    <div class="clientes-right-panel">
+                        <div class="clientes-list-panel">
+                            <div class="inline-actions">
+                                <input id="clientesSearch" type="text" placeholder="Buscar cliente...">
+                                <button id="reloadClientes" class="btn" type="button">Actualizar</button>
+                            </div>
+                            <div id="clientesList" class="clientes-list"></div>
+                        </div>
+                        <article class="clientes-detail-panel">
+                            <div id="clienteDetalleVacio" class="cliente-vacio">Selecciona un cliente para ver su detalle.</div>
+                            <div id="clienteDetalle" class="hidden">
+                                <h4 id="clienteNombre"></h4>
+                                <p><strong>Telefono:</strong> <span id="clienteTelefono">-</span></p>
+                                <p><strong>Instagram:</strong> <span id="clienteInstagram">-</span></p>
+                                <p><strong>Ultima atencion:</strong> <span id="clienteUltimaAtencion">-</span></p>
+                                <div class="cliente-fotos">
+                                    <img id="clienteFoto1" class="cliente-foto hidden" alt="Foto cliente 1" data-slot="1">
+                                    <img id="clienteFoto2" class="cliente-foto hidden" alt="Foto cliente 2" data-slot="2">
+                                </div>
+                            </div>
+                        </article>
                     </div>
                 </div>
             </section>
-        </div>
-    </div>
 
-    <!-- Modal para ver fotos en grande -->
-    <div id="fotoModal" class="modal">
-        <div class="modal-content">
-            <span class="modal-close">&times;</span>
-            <div class="modal-fotos">
-                <img id="modalFoto1" class="modal-foto" alt="Foto 1">
-                <img id="modalFoto2" class="modal-foto" alt="Foto 2">
+            <section id="tab-peluqueros" class="tab-panel card hidden admin-only">
+                <h3>Gestion de Peluqueros</h3>
+                <form id="peluqueroForm" class="form-grid">
+                    <input id="peluqueroId" type="hidden">
+                    <label>
+                        Nombre
+                        <input id="peluqueroNombre" type="text" required>
+                    </label>
+                    <label>
+                        Telefono
+                        <input id="peluqueroTelefono" type="text">
+                    </label>
+                    <label>
+                        Comision (%)
+                        <input id="peluqueroComision" type="number" min="0" max="100" step="0.5" required>
+                    </label>
+                    <label>
+                        Hora inicio
+                        <input id="peluqueroInicio" type="time" required>
+                    </label>
+                    <label>
+                        Hora fin
+                        <input id="peluqueroFin" type="time" required>
+                    </label>
+                    <label class="checkbox-label">
+                        <input id="peluqueroActivo" type="checkbox" checked>
+                        Activo
+                    </label>
+                    <fieldset class="days-fieldset">
+                        <legend>Dias de trabajo</legend>
+                        <label><input type="checkbox" class="day-check" value="1" checked>Lunes</label>
+                        <label><input type="checkbox" class="day-check" value="2" checked>Martes</label>
+                        <label><input type="checkbox" class="day-check" value="3" checked>Miercoles</label>
+                        <label><input type="checkbox" class="day-check" value="4" checked>Jueves</label>
+                        <label><input type="checkbox" class="day-check" value="5" checked>Viernes</label>
+                        <label><input type="checkbox" class="day-check" value="6" checked>Sabado</label>
+                        <label><input type="checkbox" class="day-check" value="0">Domingo</label>
+                    </fieldset>
+                    <div class="inline-actions">
+                        <button type="submit" class="btn primary">Guardar peluquero</button>
+                        <button id="cancelEditPeluquero" type="button" class="btn">Cancelar edicion</button>
+                    </div>
+                </form>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Telefono</th>
+                                <th>Comision</th>
+                                <th>Horario</th>
+                                <th>Activo</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="peluquerosTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="tab-caja" class="tab-panel card hidden restricted-agenda">
+                <h3>Caja / Registro de Atenciones</h3>
+                <form id="cajaForm" class="form-grid">
+                    <label>
+                        Fecha
+                        <input id="cajaFecha" type="date" required>
+                    </label>
+                    <label>
+                        Peluquero
+                        <select id="cajaPeluquero" required></select>
+                    </label>
+                    <label>
+                        Cliente (opcional)
+                        <input id="cajaCliente" type="text">
+                    </label>
+                    <label>
+                        Monto cobrado
+                        <input id="cajaMonto" type="number" min="0" step="0.01" required>
+                    </label>
+                    <button type="submit" class="btn primary">Registrar atencion</button>
+                </form>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Peluquero</th>
+                                <th>Cliente</th>
+                                <th>Monto</th>
+                                <th>Comision</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cajaTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="tab-reportes" class="tab-panel card hidden restricted-agenda">
+                <h3>Reportes por Peluquero</h3>
+                <div class="inline-actions">
+                    <label>
+                        Desde
+                        <input id="reporteDesde" type="date">
+                    </label>
+                    <label>
+                        Hasta
+                        <input id="reporteHasta" type="date">
+                    </label>
+                    <button id="cargarReporte" type="button" class="btn primary">Generar reporte</button>
+                </div>
+                <div id="reportesContainer"></div>
+            </section>
+
+            <section id="tab-usuarios" class="tab-panel card hidden admin-only">
+                <h3>Usuarios</h3>
+                <form id="usuarioForm" class="form-grid">
+                    <label>
+                        Usuario
+                        <input id="usuarioNombre" type="text" required>
+                    </label>
+                    <label>
+                        Contrasena
+                        <input id="usuarioPassword" type="password" required>
+                    </label>
+                    <label>
+                        Rol
+                        <select id="usuarioRol">
+                            <option value="user">Usuario</option>
+                            <option value="agenda">Solo agenda</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </label>
+                    <button type="submit" class="btn primary">Crear usuario</button>
+                </form>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Usuario</th>
+                                <th>Rol</th>
+                                <th>Alta</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usuariosTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <div id="turnoFotoModal" class="modal hidden">
+        <div class="modal-card">
+            <button id="closeTurnoFotoModal" class="btn danger" type="button">Cerrar</button>
+            <div class="modal-gallery">
+                <img id="turnoModalFoto1" alt="Foto 1">
+                <img id="turnoModalFoto2" alt="Foto 2">
             </div>
         </div>
     </div>
@@ -94,3 +378,4 @@
     <script src="script.js"></script>
 </body>
 </html>
+

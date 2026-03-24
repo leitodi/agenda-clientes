@@ -1,218 +1,68 @@
 require('dotenv').config();
-const express = require('express');
 const path = require('path');
-const bodyParser = require('body-parser');
+const express = require('express');
 const cors = require('cors');
+const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
+
+const authRoutes = require('./src/routes/auth');
+const userRoutes = require('./src/routes/users');
+const barberRoutes = require('./src/routes/barbers');
+const appointmentRoutes = require('./src/routes/appointments');
+const attendanceRoutes = require('./src/routes/attendances');
+const reportRoutes = require('./src/routes/reports');
+const dashboardRoutes = require('./src/routes/dashboard');
+const clientRoutes = require('./src/routes/clients');
+const { ensureSeedData } = require('./src/utils/seed');
+const { SERVICE_TYPES } = require('./src/utils/services');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/agenda_clientes';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/agenda_peluqueria';
 
-// Middleware
 app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+app.use(bodyParser.json({ limit: '20mb' }));
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const clienteSchema = new mongoose.Schema(
-    {
-        nombre: { type: String, required: true, trim: true },
-        telefono: { type: String, required: true, trim: true },
-        instagram: { type: String, default: '', trim: true },
-        foto1: { type: String, required: true },
-        foto2: { type: String, required: true }
-    },
-    {
-        timestamps: { createdAt: 'fecha_creacion', updatedAt: false }
-    }
-);
-
-const Cliente = mongoose.model('Cliente', clienteSchema);
-
-function mapearErrorDB(error) {
-    const mensaje = error?.message || 'Error interno del servidor';
-
-    if (
-        mensaje.includes('BSONObj size') ||
-        mensaje.includes('maximum allowed bson size')
-    ) {
-        return {
-            status: 413,
-            error: 'Las fotos son demasiado pesadas. Intenta con imagenes mas livianas.'
-        };
-    }
-
-    if (error?.name === 'ValidationError') {
-        return {
-            status: 400,
-            error: 'Datos invalidos. Revisa los campos e intenta nuevamente.'
-        };
-    }
-
-    return {
-        status: 500,
-        error: mensaje
-    };
-}
-
-function serializarCliente(cliente) {
-    return {
-        id: cliente._id.toString(),
-        nombre: cliente.nombre,
-        telefono: cliente.telefono,
-        instagram: cliente.instagram,
-        foto1: cliente.foto1,
-        foto2: cliente.foto2,
-        fecha_creacion: cliente.fecha_creacion
-    };
-}
-
-async function cargarDatosEjemplo() {
-    const count = await Cliente.countDocuments();
-    console.log(`Clientes en base de datos: ${count}`);
-
-    if (count > 0) {
-        console.log(`Base de datos ya contiene ${count} clientes`);
-        return;
-    }
-
-    const ejemplos = [
-        {
-            nombre: 'Maria Gonzalez',
-            telefono: '+34 612 345 678',
-            instagram: 'maria.gonzalez',
-            foto1: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%233498db" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EMaria Gonzalez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 1%3C/tspan%3E%3C/text%3E%3C/svg%3E',
-            foto2: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%239b59b6" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EMaria Gonzalez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 2%3C/tspan%3E%3C/text%3E%3C/svg%3E'
-        },
-        {
-            nombre: 'Juan Perez',
-            telefono: '+34 698 765 432',
-            instagram: 'juan.perez.style',
-            foto1: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%2327ae60" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EJuan Perez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 1%3C/tspan%3E%3C/text%3E%3C/svg%3E',
-            foto2: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23e74c3c" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EJuan Perez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 2%3C/tspan%3E%3C/text%3E%3C/svg%3E'
-        },
-        {
-            nombre: 'Ana Martinez',
-            telefono: '+34 722 111 222',
-            instagram: 'ana.martinez',
-            foto1: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f39c12" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EAna Martinez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 1%3C/tspan%3E%3C/text%3E%3C/svg%3E',
-            foto2: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%231abc9c" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EAna Martinez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 2%3C/tspan%3E%3C/text%3E%3C/svg%3E'
-        },
-        {
-            nombre: 'Carlos Lopez',
-            telefono: '+34 666 999 333',
-            instagram: 'carlos.beauty',
-            foto1: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%2334495e" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3ECarlos Lopez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 1%3C/tspan%3E%3C/text%3E%3C/svg%3E',
-            foto2: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%232ecc71" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3ECarlos Lopez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 2%3C/tspan%3E%3C/text%3E%3C/svg%3E'
-        }
-    ];
-
-    await Cliente.insertMany(ejemplos);
-    console.log('Datos de ejemplo cargados correctamente');
-}
-
-// ============ RUTAS API ============
-
-// GET - Obtener todos los clientes
-app.get('/api/clientes', async (req, res) => {
-    try {
-        const clientes = await Cliente.find().sort({ fecha_creacion: -1 });
-        res.json(clientes.map(serializarCliente));
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+app.get('/api/health', (req, res) => {
+    res.json({ ok: true, timestamp: new Date().toISOString() });
 });
 
-// GET - Obtener cliente por ID
-app.get('/api/clientes/:id', async (req, res) => {
-    try {
-        const cliente = await Cliente.findById(req.params.id);
-        if (!cliente) {
-            res.status(404).json({ error: 'Cliente no encontrado' });
-            return;
-        }
-        res.json(serializarCliente(cliente));
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+app.get('/api/config', (req, res) => {
+    res.json({
+        servicios: SERVICE_TYPES
+    });
 });
 
-// POST - Crear nuevo cliente
-app.post('/api/clientes', async (req, res) => {
-    const { nombre, telefono, instagram, foto1, foto2 } = req.body;
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/peluqueros', barberRoutes);
+app.use('/api/turnos', appointmentRoutes);
+app.use('/api/clientes', clientRoutes);
+app.use('/api/atenciones', attendanceRoutes);
+app.use('/api/reportes', reportRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
-    if (!nombre || !telefono || !foto1 || !foto2) {
-        res.status(400).json({ error: 'Faltan campos requeridos' });
-        return;
-    }
-
-    try {
-        const nuevoCliente = await Cliente.create({
-            nombre,
-            telefono,
-            instagram: instagram || '',
-            foto1,
-            foto2
-        });
-        res.json(serializarCliente(nuevoCliente));
-    } catch (error) {
-        const detalle = mapearErrorDB(error);
-        res.status(detalle.status).json({ error: detalle.error });
-    }
+app.use((error, req, res, next) => {
+    console.error('Error no controlado:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-// PUT - Actualizar cliente
-app.put('/api/clientes/:id', async (req, res) => {
-    const { nombre, telefono, instagram, foto1, foto2 } = req.body;
-
-    try {
-        const clienteActualizado = await Cliente.findByIdAndUpdate(
-            req.params.id,
-            { nombre, telefono, instagram, foto1, foto2 },
-            { new: true, runValidators: true }
-        );
-
-        if (!clienteActualizado) {
-            res.status(404).json({ error: 'Cliente no encontrado' });
-            return;
-        }
-
-        res.json(serializarCliente(clienteActualizado));
-    } catch (error) {
-        const detalle = mapearErrorDB(error);
-        res.status(detalle.status).json({ error: detalle.error });
-    }
-});
-
-// DELETE - Eliminar cliente
-app.delete('/api/clientes/:id', async (req, res) => {
-    try {
-        const eliminado = await Cliente.findByIdAndDelete(req.params.id);
-        if (!eliminado) {
-            res.status(404).json({ error: 'Cliente no encontrado' });
-            return;
-        }
-        res.json({ message: 'Cliente eliminado correctamente' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-async function iniciarServidor() {
+async function startServer() {
     try {
         await mongoose.connect(MONGODB_URI);
         console.log('Conectado a MongoDB');
-        await cargarDatosEjemplo();
+
+        await ensureSeedData();
 
         app.listen(PORT, () => {
-            console.log(`Servidor ejecutandose en http://localhost:${PORT}`);
-            console.log('Presiona Ctrl+C para detener el servidor');
+            console.log(`Servidor listo en http://localhost:${PORT}`);
         });
     } catch (error) {
-        console.error('Error al iniciar el servidor:', error.message);
+        console.error('Error al iniciar servidor:', error.message);
         process.exit(1);
     }
 }
 
-iniciarServidor();
+startServer();
