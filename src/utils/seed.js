@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const Barber = require('../models/Barber');
 const Attendance = require('../models/Attendance');
+const Service = require('../models/Service');
 
 function scheduleRange(start, end, dayStart, dayEnd) {
     const items = [];
@@ -83,6 +84,28 @@ async function ensureSeedData() {
         role: 'agenda',
         label: 'agenda'
     });
+
+    const defaultServices = [
+        { nombre: 'Cejas', precio: 5000 },
+        { nombre: 'Barba', precio: 7000 },
+        { nombre: 'Corte', precio: 12000 },
+        { nombre: 'Corte + Barba', precio: 14000 }
+    ];
+
+    const existingServices = await Service.find().select('nombreNormalizado');
+    const existingNames = new Set(existingServices.map((item) => item.nombreNormalizado));
+    const missingServices = defaultServices.filter((service) => {
+        const normalized = String(service.nombre || '').trim().toLowerCase();
+        return !existingNames.has(normalized);
+    });
+
+    if (missingServices.length) {
+        await Service.insertMany(missingServices.map((service) => ({
+            ...service,
+            nombreNormalizado: String(service.nombre || '').trim().toLowerCase()
+        })));
+        console.log(`Servicios iniciales creados: ${missingServices.length}`);
+    }
 
     let barbers = await Barber.find().sort({ nombre: 1 });
 

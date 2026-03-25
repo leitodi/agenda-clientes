@@ -4,7 +4,6 @@ const clientSchema = new mongoose.Schema(
     {
         nombre: { type: String, required: true, trim: true },
         nombreNormalizado: { type: String, required: true, trim: true, lowercase: true, index: true },
-        dni: { type: String, default: '', trim: true, index: true },
         telefono: { type: String, default: '', trim: true },
         telefonoNormalizado: { type: String, default: '', trim: true, index: true },
         instagram: { type: String, default: '', trim: true },

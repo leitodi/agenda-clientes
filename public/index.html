@@ -36,13 +36,18 @@
                 <button id="logoutBtn" class="btn danger" type="button">Cerrar sesion</button>
             </header>
 
-            <div id="appMessage" class="message hidden"></div>
+            <div id="appMessage" class="message hidden">
+                <span id="appMessageText"></span>
+                <button id="appMessageOk" class="btn" type="button">OK</button>
+            </div>
 
             <nav class="tabs card">
                 <button class="tab-btn active restricted-agenda" data-tab="dashboard">Dashboard</button>
                 <button class="tab-btn" data-tab="turnos">Agenda de Turnos</button>
                 <button class="tab-btn" data-tab="clientes">Clientes</button>
+                <button class="tab-btn" data-tab="cumpleanos">Cumpleanos</button>
                 <button class="tab-btn admin-only" data-tab="peluqueros">Peluqueros</button>
+                <button class="tab-btn admin-only" data-tab="servicios">Servicios</button>
                 <button class="tab-btn" data-tab="caja">Caja</button>
                 <button class="tab-btn restricted-agenda" data-tab="reportes">Reportes</button>
                 <button class="tab-btn admin-only" data-tab="usuarios">Usuarios</button>
@@ -94,7 +99,6 @@
                     <article id="turnoClienteInfo" class="cliente-turno-info hidden">
                         <h4>Cliente encontrado</h4>
                         <p><strong>Nombre:</strong> <span id="turnoClienteInfoNombre">-</span></p>
-                        <p><strong>DNI:</strong> <span id="turnoClienteInfoDni">-</span></p>
                         <p><strong>Telefono:</strong> <span id="turnoClienteInfoTelefono">-</span></p>
                         <p><strong>Instagram:</strong> <span id="turnoClienteInfoInstagram">-</span></p>
                         <div class="cliente-turno-fotos">
@@ -171,10 +175,6 @@
                                 <input id="clienteApellidoInput" type="text" required>
                             </label>
                             <label>
-                                DNI
-                                <input id="clienteDniInput" type="text" inputmode="numeric">
-                            </label>
-                            <label>
                                 Telefono
                                 <input id="clienteTelefonoInput" type="text" placeholder="351...">
                             </label>
@@ -224,7 +224,6 @@
                             <div id="clienteDetalleVacio" class="cliente-vacio">Selecciona un cliente para ver su detalle.</div>
                             <div id="clienteDetalle" class="hidden">
                                 <h4 id="clienteNombre"></h4>
-                                <p><strong>DNI:</strong> <span id="clienteDni">-</span></p>
                                 <p><strong>Telefono:</strong> <span id="clienteTelefono">-</span></p>
                                 <p><strong>Instagram:</strong> <span id="clienteInstagram">-</span></p>
                                 <p><strong>Cumpleanos:</strong> <span id="clienteFechaCumple">-</span></p>
@@ -264,6 +263,36 @@
                 </div>
             </section>
 
+            <section id="tab-cumpleanos" class="tab-panel card hidden">
+                <h3>Cumpleanos</h3>
+                <div class="inline-actions">
+                    <label>
+                        Seleccionar dia
+                        <input id="cumpleFecha" type="date">
+                    </label>
+                    <button id="buscarCumples" class="btn primary" type="button">Buscar cumpleanos</button>
+                </div>
+                <p id="cumpleResumen">Selecciona una fecha para ver cumpleanos.</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Nombre</th>
+                                <th>Apellido</th>
+                                <th>Telefono</th>
+                                <th>WhatsApp</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cumpleTableBody">
+                            <tr>
+                                <td colspan="5">Sin datos para mostrar.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
             <section id="tab-peluqueros" class="tab-panel card hidden admin-only">
                 <h3>Gestion de Peluqueros</h3>
                 <form id="peluqueroForm" class="form-grid">
@@ -275,6 +304,10 @@
                     <label>
                         Telefono
                         <input id="peluqueroTelefono" type="text">
+                    </label>
+                    <label>
+                        Fecha de cumpleanos
+                        <input id="peluqueroFechaCumple" type="date">
                     </label>
                     <label>
                         Comision (%)
@@ -314,6 +347,7 @@
                             <tr>
                                 <th>Nombre</th>
                                 <th>Telefono</th>
+                                <th>Cumpleanos</th>
                                 <th>Comision</th>
                                 <th>Horario</th>
                                 <th>Activo</th>
@@ -321,6 +355,38 @@
                             </tr>
                         </thead>
                         <tbody id="peluquerosTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="tab-servicios" class="tab-panel card hidden admin-only">
+                <h3>Servicios de Caja</h3>
+                <form id="servicioForm" class="form-grid">
+                    <input id="servicioId" type="hidden">
+                    <label>
+                        Nombre del servicio
+                        <input id="servicioNombre" type="text" required>
+                    </label>
+                    <label>
+                        Importe
+                        <input id="servicioPrecio" type="number" min="0" step="0.01" required>
+                    </label>
+                    <div class="inline-actions">
+                        <button type="submit" class="btn primary">Guardar servicio</button>
+                        <button id="cancelEditServicio" type="button" class="btn">Cancelar edicion</button>
+                    </div>
+                </form>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Servicio</th>
+                                <th>Importe</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="serviciosTableBody"></tbody>
                     </table>
                 </div>
             </section>
@@ -350,8 +416,12 @@
                         </select>
                     </label>
                     <label>
-                        Monto cobrado
-                        <input id="cajaMonto" type="number" min="0" step="0.01" required>
+                        Servicio
+                        <select id="cajaServicio" required></select>
+                    </label>
+                    <label>
+                        Monto cobrado (automatico)
+                        <input id="cajaMonto" type="number" min="0" step="0.01" required readonly>
                     </label>
                     <button type="submit" class="btn primary">Registrar venta</button>
                 </form>
@@ -468,10 +538,6 @@
                 <label>
                     Apellido
                     <input id="nuevoClienteTurnoApellido" type="text" required>
-                </label>
-                <label>
-                    DNI
-                    <input id="nuevoClienteTurnoDni" type="text" inputmode="numeric">
                 </label>
                 <label>
                     Telefono

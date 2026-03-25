@@ -410,9 +410,25 @@ td {
 }
 
 .message {
-    border-radius: 10px;
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 120;
+    width: min(92vw, 820px);
+    border-radius: 12px;
+    border: 1px solid #cbd5e1;
     padding: 0.7rem 0.85rem;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.7rem;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+}
+
+#appMessageText {
+    color: inherit;
 }
 
 .message.success {
@@ -423,6 +439,39 @@ td {
 .message.error {
     background: #fee2e2;
     color: #991b1b;
+}
+
+.whatsapp-btn {
+    background: #16a34a;
+    color: #fff;
+    border-radius: 999px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 52px;
+}
+
+.whatsapp-btn:hover {
+    background: #15803d;
+}
+
+.cumple-badge {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 0.22rem 0.62rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.cumple-badge-cliente {
+    background: #dbeafe;
+    color: #1e3a8a;
+}
+
+.cumple-badge-personal {
+    background: #ede9fe;
+    color: #5b21b6;
 }
 
 .modal {
@@ -490,6 +539,12 @@ td {
 
     .cliente-fotos {
         grid-template-columns: 1fr;
+    }
+
+    .message {
+        top: 8px;
+        width: 94vw;
+        padding: 0.6rem 0.65rem;
     }
 }
 

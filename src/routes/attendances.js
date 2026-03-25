@@ -1,6 +1,7 @@
 const express = require('express');
 const Attendance = require('../models/Attendance');
 const Barber = require('../models/Barber');
+const Service = require('../models/Service');
 const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
@@ -26,26 +27,42 @@ router.get('/', authRequired, async (req, res) => {
 
     const atenciones = await Attendance.find(filter)
         .populate('peluquero', 'nombre porcentajeComision')
+        .populate('servicioId', 'nombre precio')
         .sort({ fecha: -1, createdAt: -1 });
 
     return res.json(atenciones);
 });
 
 router.post('/', authRequired, async (req, res) => {
-    const { fecha, peluqueroId, cliente, formaPago, montoCobrado } = req.body;
+    const { fecha, peluqueroId, cliente, formaPago, montoCobrado, servicioId } = req.body;
 
-    if (!isValidDateString(fecha) || !peluqueroId || montoCobrado === undefined) {
-        return res.status(400).json({ error: 'Fecha, peluquero y monto son requeridos' });
-    }
-
-    const monto = Number(montoCobrado);
-    if (Number.isNaN(monto) || monto < 0) {
-        return res.status(400).json({ error: 'Monto invalido' });
+    if (!isValidDateString(fecha) || !peluqueroId || (!servicioId && montoCobrado === undefined)) {
+        return res.status(400).json({ error: 'Fecha, peluquero y servicio son requeridos' });
     }
 
     const formaPagoNormalizada = String(formaPago || '').trim().toLowerCase();
     if (!['efectivo', 'transferencia', 'tarjeta'].includes(formaPagoNormalizada)) {
         return res.status(400).json({ error: 'Forma de pago invalida' });
+    }
+
+    let monto = Number(montoCobrado);
+    let servicio = null;
+    let servicioNombre = '';
+
+    if (servicioId) {
+        if (!/^[a-fA-F0-9]{24}$/.test(String(servicioId))) {
+            return res.status(400).json({ error: 'Servicio invalido' });
+        }
+        servicio = await Service.findById(servicioId);
+        if (!servicio) {
+            return res.status(404).json({ error: 'Servicio no encontrado' });
+        }
+        monto = Number(servicio.precio);
+        servicioNombre = servicio.nombre;
+    }
+
+    if (Number.isNaN(monto) || monto < 0) {
+        return res.status(400).json({ error: 'Monto invalido' });
     }
 
     const barber = await Barber.findById(peluqueroId);
@@ -59,6 +76,8 @@ router.post('/', authRequired, async (req, res) => {
     const atencion = await Attendance.create({
         fecha,
         cliente: String(cliente || '').trim(),
+        servicioNombre,
+        servicioId: servicio?._id || undefined,
         formaPago: formaPagoNormalizada,
         montoCobrado: monto,
         comisionPorcentaje: barber.porcentajeComision,
@@ -68,7 +87,8 @@ router.post('/', authRequired, async (req, res) => {
     });
 
     const populated = await Attendance.findById(atencion._id)
-        .populate('peluquero', 'nombre porcentajeComision');
+        .populate('peluquero', 'nombre porcentajeComision')
+        .populate('servicioId', 'nombre precio');
 
     return res.status(201).json(populated);
 });

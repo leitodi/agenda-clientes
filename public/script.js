@@ -18,6 +18,7 @@ const state = {
     peluqueros: [],
     turnos: [],
     clientes: [],
+    serviciosCaja: [],
     selectedClienteId: null,
     selectedTurnoClienteId: null,
     pendingTurnoPayload: null,
@@ -52,8 +53,15 @@ function normalizeText(value) {
     return String(value || '').trim().toLowerCase();
 }
 
-function normalizeDni(value) {
+function normalizeDigits(value) {
     return String(value || '').replace(/\D/g, '').trim();
+}
+
+function formatCurrency(value) {
+    return Number(value || 0).toLocaleString('es-AR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
 }
 
 function parseTimeToMinutesLocal(time) {
@@ -156,13 +164,21 @@ function getMondayDateString(baseDateString) {
 
 function showMessage(message, type = 'success') {
     const box = $('appMessage');
-    box.textContent = message;
+    const text = $('appMessageText');
+
+    if (text) {
+        text.textContent = message;
+    } else {
+        box.textContent = message;
+    }
+
     box.className = `message ${type}`;
     box.classList.remove('hidden');
+}
 
-    setTimeout(() => {
-        box.classList.add('hidden');
-    }, 3500);
+function hideMessage() {
+    const box = $('appMessage');
+    box.classList.add('hidden');
 }
 
 async function apiFetch(url, options = {}) {
@@ -329,6 +345,43 @@ function completarSelectPeluqueros() {
     }
 }
 
+function syncCajaMontoByServicio() {
+    const servicioId = $('cajaServicio')?.value || '';
+    const servicio = state.serviciosCaja.find((item) => item._id === servicioId);
+    $('cajaMonto').value = servicio ? Number(servicio.precio).toFixed(2) : '';
+}
+
+function renderCajaServiciosSelect() {
+    const select = $('cajaServicio');
+    if (!select) {
+        return;
+    }
+
+    if (!state.serviciosCaja.length) {
+        select.innerHTML = '<option value="">Sin servicios disponibles</option>';
+        select.value = '';
+        $('cajaMonto').value = '';
+        return;
+    }
+
+    const options = state.serviciosCaja
+        .map((servicio) => (
+            `<option value="${servicio._id}">${escapeHtml(servicio.nombre)} - $${formatCurrency(servicio.precio)}</option>`
+        ))
+        .join('');
+
+    const current = select.value;
+    select.innerHTML = options;
+
+    if (current && state.serviciosCaja.some((item) => item._id === current)) {
+        select.value = current;
+    } else {
+        select.value = state.serviciosCaja[0]._id;
+    }
+
+    syncCajaMontoByServicio();
+}
+
 function renderPeluquerosTable() {
     const body = $('peluquerosTableBody');
 
@@ -336,6 +389,7 @@ function renderPeluquerosTable() {
         <tr>
             <td>${escapeHtml(p.nombre)}</td>
             <td>${escapeHtml(p.telefono || '-')}</td>
+            <td>${escapeHtml(p.fechaCumpleanos ? formatDateLabel(p.fechaCumpleanos) : '-')}</td>
             <td>${p.porcentajeComision}%</td>
             <td>${escapeHtml(scheduleToText(p.agenda))}</td>
             <td>${p.activo ? 'Si' : 'No'}</td>
@@ -343,6 +397,31 @@ function renderPeluquerosTable() {
                 <div class="row-actions">
                     <button class="btn" type="button" data-action="edit-peluquero" data-id="${p._id}">Editar</button>
                     <button class="btn danger" type="button" data-action="delete-peluquero" data-id="${p._id}">Eliminar</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderServiciosTable() {
+    const body = $('serviciosTableBody');
+    if (!body) {
+        return;
+    }
+
+    if (!state.serviciosCaja.length) {
+        body.innerHTML = '<tr><td colspan="3">No hay servicios cargados.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = state.serviciosCaja.map((servicio) => `
+        <tr>
+            <td>${escapeHtml(servicio.nombre)}</td>
+            <td>$${formatCurrency(servicio.precio)}</td>
+            <td>
+                <div class="row-actions">
+                    <button class="btn" type="button" data-action="edit-servicio" data-id="${servicio._id}">Editar</button>
+                    <button class="btn danger" type="button" data-action="delete-servicio" data-id="${servicio._id}">Eliminar</button>
                 </div>
             </td>
         </tr>
@@ -391,7 +470,7 @@ function renderTurnosTable() {
 function completarClientesDatalist() {
     const options = state.clientes
         .map((cliente) => (
-            `<option value="${escapeHtml(cliente.nombre)}" label="Tel ${escapeHtml(cliente.telefono || '-')} | DNI ${escapeHtml(cliente.dni || '-')}"></option>`
+            `<option value="${escapeHtml(cliente.nombre)}" label="Tel ${escapeHtml(cliente.telefono || '-')}"></option>`
         ))
         .join('');
 
@@ -407,13 +486,12 @@ function renderClientesList() {
     const list = $('clientesList');
     const rawSearch = $('clientesSearch')?.value || '';
     const search = normalizeText(rawSearch);
-    const searchDni = normalizeDni(rawSearch);
+    const searchDigits = normalizeDigits(rawSearch);
 
     const visibles = state.clientes.filter((cliente) => {
         const byName = normalizeText(cliente.nombre).includes(search);
-        const byDni = searchDni ? normalizeDni(cliente.dni).includes(searchDni) : false;
-        const byPhone = searchDni ? normalizeDni(cliente.telefono).includes(searchDni) : false;
-        return byName || byDni || byPhone;
+        const byPhone = searchDigits ? normalizeDigits(cliente.telefono).includes(searchDigits) : false;
+        return byName || byPhone;
     });
 
     if (!visibles.length) {
@@ -424,7 +502,7 @@ function renderClientesList() {
     list.innerHTML = visibles.map((cliente) => `
         <div class="cliente-item ${state.selectedClienteId === cliente._id ? 'active' : ''}" data-action="select-cliente" data-id="${cliente._id}">
             <strong>${escapeHtml(cliente.nombre)}</strong>
-            <small>DNI: ${escapeHtml(cliente.dni || '-')}</small>
+            <small>Tel: ${escapeHtml(cliente.telefono || '-')}</small>
             <small>
                 ${cliente.ultimaAtencion
         ? `Ultima atencion: ${escapeHtml(cliente.ultimaAtencion)}${cliente.ultimaAtencionPeluquero ? ` - ${escapeHtml(cliente.ultimaAtencionPeluquero)}` : ''}`
@@ -447,7 +525,6 @@ function renderClienteDetalle() {
     $('clienteDetalleVacio').classList.add('hidden');
     $('clienteDetalle').classList.remove('hidden');
     $('clienteNombre').textContent = cliente.nombre || '-';
-    $('clienteDni').textContent = cliente.dni || '-';
     $('clienteTelefono').textContent = cliente.telefono || '-';
     $('clienteInstagram').textContent = cliente.instagram || '-';
     $('clienteFechaCumple').textContent = cliente.fechaCumpleanos || '-';
@@ -473,6 +550,131 @@ function renderClienteDetalle() {
         foto2.src = '';
         foto2.classList.add('hidden');
     }
+}
+
+function getMonthDayFromDateString(value) {
+    const text = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        return null;
+    }
+
+    const parts = text.split('-').map(Number);
+    return {
+        month: parts[1],
+        day: parts[2]
+    };
+}
+
+function formatDateLabel(dateString) {
+    const parsed = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) {
+        return dateString;
+    }
+
+    return parsed.toLocaleDateString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+}
+
+function toWhatsAppNumber(rawPhone) {
+    const digits = normalizeDigits(rawPhone);
+    if (!digits) {
+        return '';
+    }
+
+    if (digits.startsWith('54')) {
+        return digits;
+    }
+
+    if (digits.startsWith('0')) {
+        return `54${digits.slice(1)}`;
+    }
+
+    if (digits.length >= 10) {
+        return `54${digits}`;
+    }
+
+    return digits;
+}
+
+function buildCumpleMessage(clienteNombre, fechaSeleccionada) {
+    const fechaTexto = formatDateLabel(fechaSeleccionada);
+    return `Hola ${String(clienteNombre || '').trim()}, el dia ${fechaTexto} es tu cumple tenes un corte de pelo gratis avisanos tu horario para reservar suerte.`;
+}
+
+function renderCumpleanos() {
+    const fechaSeleccionada = $('cumpleFecha')?.value || '';
+    const resumen = $('cumpleResumen');
+    const body = $('cumpleTableBody');
+
+    if (!resumen || !body) {
+        return;
+    }
+
+    if (!fechaSeleccionada) {
+        resumen.textContent = 'Selecciona una fecha para ver cumpleanos.';
+        body.innerHTML = '<tr><td colspan="5">Sin datos para mostrar.</td></tr>';
+        return;
+    }
+
+    const selected = getMonthDayFromDateString(fechaSeleccionada);
+    if (!selected) {
+        resumen.textContent = 'Fecha invalida.';
+        body.innerHTML = '<tr><td colspan="5">Fecha invalida.</td></tr>';
+        return;
+    }
+
+    const cumpleanerosClientes = state.clientes.filter((cliente) => {
+        const cumple = getMonthDayFromDateString(cliente.fechaCumpleanos);
+        return cumple && cumple.month === selected.month && cumple.day === selected.day;
+    }).map((cliente) => ({
+        tipo: 'Cliente',
+        tipoClass: 'cumple-badge-cliente',
+        nombreCompleto: cliente.nombre || '',
+        telefono: String(cliente.telefono || '').trim()
+    }));
+
+    const cumpleanerosPersonal = state.peluqueros.filter((peluquero) => {
+        const cumple = getMonthDayFromDateString(peluquero.fechaCumpleanos);
+        return cumple && cumple.month === selected.month && cumple.day === selected.day;
+    }).map((peluquero) => ({
+        tipo: 'Personal',
+        tipoClass: 'cumple-badge-personal',
+        nombreCompleto: peluquero.nombre || '',
+        telefono: String(peluquero.telefono || '').trim()
+    }));
+
+    const cumpleaneros = cumpleanerosClientes.concat(cumpleanerosPersonal);
+
+    if (!cumpleaneros.length) {
+        resumen.textContent = `No hay cumpleanos para el ${formatDateLabel(fechaSeleccionada)}.`;
+        body.innerHTML = '<tr><td colspan="5">No hay personas para esa fecha.</td></tr>';
+        return;
+    }
+
+    resumen.textContent = `Cumpleanos del ${formatDateLabel(fechaSeleccionada)}: ${cumpleaneros.length} persona(s) - ${cumpleanerosClientes.length} cliente(s), ${cumpleanerosPersonal.length} personal.`;
+    body.innerHTML = cumpleaneros.map((persona) => {
+        const fullName = splitFullName(persona.nombreCompleto);
+        const telefono = String(persona.telefono || '').trim();
+        const waNumber = toWhatsAppNumber(telefono);
+        const waText = encodeURIComponent(buildCumpleMessage(persona.nombreCompleto, fechaSeleccionada));
+        const waLink = waNumber ? `https://wa.me/${waNumber}?text=${waText}` : '';
+        const waCell = waLink
+            ? `<a class="btn whatsapp-btn" href="${waLink}" target="_blank" rel="noopener noreferrer">WhatsApp</a>`
+            : '-';
+
+        return `
+            <tr>
+                <td><span class="cumple-badge ${persona.tipoClass}">${escapeHtml(persona.tipo)}</span></td>
+                <td>${escapeHtml(fullName.nombre || persona.nombreCompleto || '-')}</td>
+                <td>${escapeHtml(fullName.apellido || '-')}</td>
+                <td>${escapeHtml(telefono || '-')}</td>
+                <td>${waCell}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 function selectCliente(clienteId) {
@@ -510,7 +712,6 @@ function updateTurnoClienteInfo(cliente) {
     if (!cliente) {
         card.classList.add('hidden');
         $('turnoClienteInfoNombre').textContent = '-';
-        $('turnoClienteInfoDni').textContent = '-';
         $('turnoClienteInfoTelefono').textContent = '-';
         $('turnoClienteInfoInstagram').textContent = '-';
         foto1.src = '';
@@ -522,7 +723,6 @@ function updateTurnoClienteInfo(cliente) {
 
     card.classList.remove('hidden');
     $('turnoClienteInfoNombre').textContent = cliente.nombre || '-';
-    $('turnoClienteInfoDni').textContent = cliente.dni || '-';
     $('turnoClienteInfoTelefono').textContent = cliente.telefono || '-';
     $('turnoClienteInfoInstagram').textContent = cliente.instagram || '-';
 
@@ -569,7 +769,6 @@ function openNuevoClienteTurnoModal(nombreCompleto) {
     const parsed = splitFullName(nombreCompleto);
     $('nuevoClienteTurnoNombre').value = parsed.nombre;
     $('nuevoClienteTurnoApellido').value = parsed.apellido;
-    $('nuevoClienteTurnoDni').value = '';
     $('nuevoClienteTurnoTelefono').value = '';
     $('nuevoClienteTurnoInstagram').value = '';
     $('nuevoClienteTurnoFechaCumple').value = '';
@@ -683,6 +882,7 @@ function resetPeluqueroForm() {
     $('peluqueroId').value = '';
     $('peluqueroNombre').value = '';
     $('peluqueroTelefono').value = '';
+    $('peluqueroFechaCumple').value = '';
     $('peluqueroComision').value = '40';
     $('peluqueroInicio').value = '10:00';
     $('peluqueroFin').value = '22:00';
@@ -690,6 +890,12 @@ function resetPeluqueroForm() {
     document.querySelectorAll('.day-check').forEach((check) => {
         check.checked = Number(check.value) >= 1 && Number(check.value) <= 6;
     });
+}
+
+function resetServicioForm() {
+    $('servicioId').value = '';
+    $('servicioNombre').value = '';
+    $('servicioPrecio').value = '';
 }
 
 function readPeluqueroAgenda() {
@@ -719,6 +925,7 @@ function fillPeluqueroForm(barberId) {
     $('peluqueroId').value = barber._id;
     $('peluqueroNombre').value = barber.nombre;
     $('peluqueroTelefono').value = barber.telefono || '';
+    $('peluqueroFechaCumple').value = barber.fechaCumpleanos || '';
     $('peluqueroComision').value = barber.porcentajeComision;
     $('peluqueroActivo').checked = barber.activo;
 
@@ -730,6 +937,18 @@ function fillPeluqueroForm(barberId) {
     document.querySelectorAll('.day-check').forEach((check) => {
         check.checked = activeDays.has(Number(check.value));
     });
+}
+
+function fillServicioForm(servicioId) {
+    const servicio = state.serviciosCaja.find((item) => item._id === servicioId);
+    if (!servicio) {
+        showMessage('Servicio no encontrado', 'error');
+        return;
+    }
+
+    $('servicioId').value = servicio._id;
+    $('servicioNombre').value = servicio.nombre;
+    $('servicioPrecio').value = Number(servicio.precio).toFixed(2);
 }
 
 function getTurnoPhotoRefs(slot) {
@@ -1227,12 +1446,20 @@ async function cargarPeluqueros() {
     state.peluqueros = await apiFetch('/api/peluqueros');
     completarSelectPeluqueros();
     renderPeluquerosTable();
+    renderCumpleanos();
+}
+
+async function cargarServiciosCaja() {
+    state.serviciosCaja = await apiFetch('/api/servicios');
+    renderCajaServiciosSelect();
+    renderServiciosTable();
 }
 
 async function cargarClientes() {
     state.clientes = await apiFetch('/api/clientes');
     completarClientesDatalist();
     renderClientesList();
+    renderCumpleanos();
 
     if (!state.selectedClienteId && state.clientes.length > 0) {
         state.selectedClienteId = state.clientes[0]._id;
@@ -1296,6 +1523,7 @@ async function cargarUsuarios() {
 
 async function cargarTodoInicial() {
     await cargarConfig();
+    await cargarServiciosCaja();
     await cargarPeluqueros();
     await cargarClientes();
     await cargarTurnos();
@@ -1349,6 +1577,10 @@ async function restoreSession() {
 }
 
 function attachEvents() {
+    $('appMessageOk').addEventListener('click', () => {
+        hideMessage();
+    });
+
     $('turnoFoto1').addEventListener('change', async () => {
         try {
             await processTurnoPhoto('1');
@@ -1395,6 +1627,14 @@ function attachEvents() {
         } catch (error) {
             showMessage(error.message, 'error');
         }
+    });
+
+    $('buscarCumples').addEventListener('click', () => {
+        renderCumpleanos();
+    });
+
+    $('cumpleFecha').addEventListener('change', () => {
+        renderCumpleanos();
     });
 
     $('closeTurnoFotoModal').addEventListener('click', closeTurnoFotoModal);
@@ -1553,7 +1793,6 @@ function attachEvents() {
                 body: {
                     nombre: $('nuevoClienteTurnoNombre').value.trim(),
                     apellido: $('nuevoClienteTurnoApellido').value.trim(),
-                    dni: $('nuevoClienteTurnoDni').value.trim(),
                     telefono: $('nuevoClienteTurnoTelefono').value.trim(),
                     instagram: $('nuevoClienteTurnoInstagram').value.trim(),
                     fechaCumpleanos: $('nuevoClienteTurnoFechaCumple').value
@@ -1689,7 +1928,6 @@ function attachEvents() {
         try {
             const nombre = $('clienteNombreInput').value.trim();
             const apellido = $('clienteApellidoInput').value.trim();
-            const dni = $('clienteDniInput').value.trim();
 
             if (!nombre || !apellido) {
                 throw new Error('Nombre y apellido son obligatorios');
@@ -1707,7 +1945,6 @@ function attachEvents() {
                 body: {
                     nombre,
                     apellido,
-                    dni,
                     telefono: $('clienteTelefonoInput').value.trim(),
                     instagram: $('clienteInstagramInput').value.trim(),
                     fechaCumpleanos: $('clienteFechaCumpleInput').value,
@@ -1762,6 +1999,7 @@ function attachEvents() {
             const payload = {
                 nombre: $('peluqueroNombre').value.trim(),
                 telefono: $('peluqueroTelefono').value.trim(),
+                fechaCumpleanos: $('peluqueroFechaCumple').value,
                 porcentajeComision: Number($('peluqueroComision').value),
                 agenda: readPeluqueroAgenda(),
                 activo: $('peluqueroActivo').checked
@@ -1812,10 +2050,74 @@ function attachEvents() {
         }
     });
 
+    $('servicioForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const id = $('servicioId').value;
+            const payload = {
+                nombre: $('servicioNombre').value.trim(),
+                precio: Number($('servicioPrecio').value)
+            };
+
+            if (id) {
+                await apiFetch(`/api/servicios/${id}`, { method: 'PUT', body: payload });
+                showMessage('Servicio actualizado');
+            } else {
+                await apiFetch('/api/servicios', { method: 'POST', body: payload });
+                showMessage('Servicio creado');
+            }
+
+            resetServicioForm();
+            await cargarServiciosCaja();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cancelEditServicio').addEventListener('click', () => {
+        resetServicioForm();
+    });
+
+    $('serviciosTableBody').addEventListener('click', async (event) => {
+        const editBtn = event.target.closest('button[data-action="edit-servicio"]');
+        const deleteBtn = event.target.closest('button[data-action="delete-servicio"]');
+
+        if (editBtn) {
+            fillServicioForm(editBtn.dataset.id);
+            return;
+        }
+
+        if (!deleteBtn) {
+            return;
+        }
+
+        if (!confirm('Eliminar este servicio?')) {
+            return;
+        }
+
+        try {
+            await apiFetch(`/api/servicios/${deleteBtn.dataset.id}`, { method: 'DELETE' });
+            await cargarServiciosCaja();
+            showMessage('Servicio eliminado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cajaServicio').addEventListener('change', () => {
+        syncCajaMontoByServicio();
+    });
+
     $('cajaForm').addEventListener('submit', async (event) => {
         event.preventDefault();
 
         try {
+            const servicioId = $('cajaServicio').value;
+            if (!servicioId) {
+                throw new Error('Debes seleccionar un servicio');
+            }
+
             await apiFetch('/api/atenciones', {
                 method: 'POST',
                 body: {
@@ -1823,13 +2125,13 @@ function attachEvents() {
                     peluqueroId: $('cajaPeluquero').value,
                     cliente: $('cajaCliente').value.trim(),
                     formaPago: $('cajaFormaPago').value,
-                    montoCobrado: Number($('cajaMonto').value)
+                    servicioId
                 }
             });
 
             $('cajaCliente').value = '';
             $('cajaFormaPago').value = 'efectivo';
-            $('cajaMonto').value = '';
+            renderCajaServiciosSelect();
             showMessage('Venta registrada en caja');
         } catch (error) {
             showMessage(error.message, 'error');
@@ -1991,6 +2293,7 @@ function setDefaultDates() {
     $('turnoHora').value = '10:00';
     $('turnosFiltroFecha').value = value;
     $('cajaFecha').value = value;
+    $('cumpleFecha').value = value;
     $('reporteFechaDia').value = value;
     $('reporteSemanaDesde').value = monday;
     $('reporteSemanaHasta').value = value;
@@ -2000,6 +2303,7 @@ function setDefaultDates() {
 async function init() {
     setDefaultDates();
     resetPeluqueroForm();
+    resetServicioForm();
     attachEvents();
     await restoreSession();
 }

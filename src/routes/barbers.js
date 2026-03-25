@@ -24,22 +24,37 @@ function normalizarAgenda(agenda) {
     return valid.sort((a, b) => a.dayOfWeek - b.dayOfWeek);
 }
 
+function normalizeOptionalDate(value) {
+    const text = String(value || '').trim();
+    if (!text) {
+        return '';
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        throw new Error('Fecha de cumpleanos invalida');
+    }
+
+    return text;
+}
+
 router.get('/', authRequired, async (req, res) => {
     const barbers = await Barber.find().sort({ nombre: 1 });
     return res.json(barbers);
 });
 
 router.post('/', authRequired, adminRequired, async (req, res) => {
-    const { nombre, telefono, porcentajeComision, agenda, activo } = req.body;
+    const { nombre, telefono, fechaCumpleanos, porcentajeComision, agenda, activo } = req.body;
 
     if (!nombre) {
         return res.status(400).json({ error: 'Nombre requerido' });
     }
 
     let agendaNormalizada;
+    let fechaCumpleNormalizada = '';
 
     try {
         agendaNormalizada = normalizarAgenda(agenda || []);
+        fechaCumpleNormalizada = normalizeOptionalDate(fechaCumpleanos);
     } catch (error) {
         return res.status(400).json({ error: error.message });
     }
@@ -47,6 +62,7 @@ router.post('/', authRequired, adminRequired, async (req, res) => {
     const barber = await Barber.create({
         nombre: String(nombre).trim(),
         telefono: String(telefono || '').trim(),
+        fechaCumpleanos: fechaCumpleNormalizada,
         porcentajeComision: Number(porcentajeComision),
         agenda: agendaNormalizada,
         activo: Boolean(activo ?? true)
@@ -56,12 +72,14 @@ router.post('/', authRequired, adminRequired, async (req, res) => {
 });
 
 router.put('/:id', authRequired, adminRequired, async (req, res) => {
-    const { nombre, telefono, porcentajeComision, agenda, activo } = req.body;
+    const { nombre, telefono, fechaCumpleanos, porcentajeComision, agenda, activo } = req.body;
 
     let agendaNormalizada;
+    let fechaCumpleNormalizada = '';
 
     try {
         agendaNormalizada = normalizarAgenda(agenda || []);
+        fechaCumpleNormalizada = normalizeOptionalDate(fechaCumpleanos);
     } catch (error) {
         return res.status(400).json({ error: error.message });
     }
@@ -71,6 +89,7 @@ router.put('/:id', authRequired, adminRequired, async (req, res) => {
         {
             nombre: String(nombre || '').trim(),
             telefono: String(telefono || '').trim(),
+            fechaCumpleanos: fechaCumpleNormalizada,
             porcentajeComision: Number(porcentajeComision),
             agenda: agendaNormalizada,
             activo: Boolean(activo)

@@ -13,6 +13,7 @@ const barberSchema = new mongoose.Schema(
     {
         nombre: { type: String, required: true, trim: true },
         telefono: { type: String, default: '', trim: true },
+        fechaCumpleanos: { type: String, default: '' },
         porcentajeComision: { type: Number, required: true, min: 0, max: 100 },
         agenda: { type: [scheduleSchema], default: [] },
         activo: { type: Boolean, default: true }

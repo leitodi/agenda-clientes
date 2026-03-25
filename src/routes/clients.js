@@ -8,10 +8,6 @@ function normalizeName(value) {
     return String(value || '').trim().toLowerCase();
 }
 
-function normalizeDni(value) {
-    return String(value || '').replace(/\D/g, '').trim();
-}
-
 function normalizePhone(value) {
     return String(value || '').replace(/\D/g, '').trim();
 }
@@ -22,10 +18,9 @@ router.get('/', authRequired, async (req, res) => {
 });
 
 router.post('/', authRequired, async (req, res) => {
-    const { nombre, apellido, dni, telefono, instagram, fechaCumpleanos, foto1, foto2 } = req.body;
+    const { nombre, apellido, telefono, instagram, fechaCumpleanos, foto1, foto2 } = req.body;
 
     const fullName = `${String(nombre || '').trim()} ${String(apellido || '').trim()}`.trim();
-    const dniNormalizado = normalizeDni(dni);
     const telefonoRaw = String(telefono || '').trim();
     const telefonoNormalizado = normalizePhone(telefonoRaw);
 
@@ -37,7 +32,6 @@ router.post('/', authRequired, async (req, res) => {
     const existing = telefonoNormalizado ? await Client.findOne({ telefonoNormalizado }) : null;
     if (existing) {
         existing.nombre = fullName;
-        existing.dni = dniNormalizado;
         existing.telefono = telefonoRaw;
         existing.telefonoNormalizado = telefonoNormalizado;
         existing.instagram = String(instagram || '').trim();
@@ -57,7 +51,6 @@ router.post('/', authRequired, async (req, res) => {
     const cliente = await Client.create({
         nombre: fullName,
         nombreNormalizado,
-        dni: dniNormalizado,
         telefono: telefonoRaw,
         telefonoNormalizado,
         instagram: String(instagram || '').trim(),

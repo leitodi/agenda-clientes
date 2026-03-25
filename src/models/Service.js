@@ -1,0 +1,17 @@
+const mongoose = require('mongoose');
+
+const serviceSchema = new mongoose.Schema(
+    {
+        nombre: { type: String, required: true, trim: true },
+        nombreNormalizado: { type: String, required: true, trim: true, lowercase: true, unique: true },
+        precio: { type: Number, required: true, min: 0 }
+    },
+    {
+        timestamps: true
+    }
+);
+
+serviceSchema.index({ nombreNormalizado: 1 }, { unique: true });
+
+module.exports = mongoose.model('Service', serviceSchema);
+
