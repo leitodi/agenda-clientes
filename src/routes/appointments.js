@@ -9,6 +9,7 @@ const { getServiceDuration } = require('../utils/services');
 const router = express.Router();
 const OPENING_MINUTES = 10 * 60;
 const CLOSING_MINUTES = 22 * 60;
+const APPOINTMENT_STATUSES = new Set(['pendiente', 'atendido', 'perdido']);
 
 function isValidDateString(date) {
     return /^\d{4}-\d{2}-\d{2}$/.test(date);
@@ -60,6 +61,10 @@ async function validarSuperposicion({ peluqueroId, fecha, inicioMinutos, finMinu
 }
 
 function normalizarNombreCliente(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function normalizarEstadoTurno(value) {
     return String(value || '').trim().toLowerCase();
 }
 
@@ -273,6 +278,29 @@ router.put('/:id', authRequired, notAgendaRequired, async (req, res) => {
     } catch (error) {
         return res.status(400).json({ error: error.message });
     }
+});
+
+router.patch('/:id/estado', authRequired, async (req, res) => {
+    const estado = normalizarEstadoTurno(req.body?.estado);
+
+    if (!APPOINTMENT_STATUSES.has(estado)) {
+        return res.status(400).json({ error: 'Estado de turno invalido' });
+    }
+
+    const turno = await Appointment.findById(req.params.id);
+    if (!turno) {
+        return res.status(404).json({ error: 'Turno no encontrado' });
+    }
+
+    turno.estado = estado;
+    turno.estadoActualizadoEn = new Date();
+    await turno.save();
+
+    const turnoPopulado = await Appointment.findById(turno._id)
+        .populate('peluquero', 'nombre telefono porcentajeComision agenda activo')
+        .populate('clienteId', 'nombre telefono instagram fechaCumpleanos foto1 foto2 ultimaAtencion ultimaAtencionPeluquero');
+
+    return res.json(turnoPopulado);
 });
 
 router.delete('/:id', authRequired, notAgendaRequired, async (req, res) => {

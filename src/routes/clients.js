@@ -115,6 +115,7 @@ router.get('/:id', authRequired, async (req, res) => {
 router.put('/:id', authRequired, async (req, res) => {
     const { nombre, apellido, telefono, instagram, fechaCumpleanos, foto1, foto2 } = req.body;
 
+    debugger;
     const cliente = await Client.findById(req.params.id);
     if (!cliente) {
         return res.status(404).json({ error: 'Cliente no encontrado' });
@@ -135,6 +136,7 @@ router.put('/:id', authRequired, async (req, res) => {
         return res.status(400).json({ error: error.message });
     }
 
+    debugger;
     if (telefonoNormalizado) {
         const existing = await Client.findOne({
             telefonoNormalizado,

@@ -45,7 +45,7 @@
                 <button class="tab-btn active restricted-agenda" data-tab="dashboard">Dashboard</button>
                 <button class="tab-btn" data-tab="turnos">Agenda de Turnos</button>
                 <button class="tab-btn" data-tab="clientes">Clientes</button>
-                <button class="tab-btn" data-tab="cumpleanos">Cumpleanos</button>
+                <button class="tab-btn" data-tab="cumpleanos">Cumpleaños</button>
                 <button class="tab-btn admin-only" data-tab="peluqueros">Peluqueros</button>
                 <button class="tab-btn admin-only" data-tab="servicios">Servicios</button>
                 <button class="tab-btn" data-tab="caja">Caja</button>
@@ -143,6 +143,16 @@
                     <button id="reloadTurnos" class="btn" type="button">Buscar</button>
                 </div>
 
+                <section id="turnosAhoraPanel" class="turnos-alert-panel hidden">
+                    <div class="turnos-alert-header">
+                        <div>
+                            <h4>Turnos del momento</h4>
+                            <p id="turnosAhoraResumen">Avisos de turnos que ya estan en horario.</p>
+                        </div>
+                    </div>
+                    <div id="turnosAhoraList" class="turnos-alert-list"></div>
+                </section>
+
                 <div class="table-wrap">
                     <table>
                         <thead>
@@ -151,6 +161,7 @@
                                 <th>Peluquero</th>
                                 <th>Servicio</th>
                                 <th>Cliente</th>
+                                <th>Estado</th>
                                 <th>Fotos</th>
                                 <th>Accion</th>
                             </tr>
@@ -184,7 +195,7 @@
                                 <input id="clienteInstagramInput" type="text" placeholder="@usuario">
                             </label>
                             <label>
-                                Fecha de cumpleanos
+                                Fecha de cumpleaños
                                 <input id="clienteFechaCumpleInput" type="text" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10">
                             </label>
 
@@ -230,7 +241,7 @@
                                 <h4 id="clienteNombre"></h4>
                                 <p><strong>Telefono:</strong> <span id="clienteTelefono">-</span></p>
                                 <p><strong>Instagram:</strong> <span id="clienteInstagram">-</span></p>
-                                <p><strong>Cumpleanos:</strong> <span id="clienteFechaCumple">-</span></p>
+                                <p><strong>Cumpleaños:</strong> <span id="clienteFechaCumple">-</span></p>
                                 <p><strong>Ultima atencion:</strong> <span id="clienteUltimaAtencion">-</span></p>
                                 <p><strong>Peluquero ultima atencion:</strong> <span id="clienteUltimaAtencionPeluquero">-</span></p>
                                 <div class="inline-actions">
@@ -247,14 +258,14 @@
             </section>
 
             <section id="tab-cumpleanos" class="tab-panel card hidden">
-                <h3>Cumpleanos</h3>
+                <h3>Cumpleaños</h3>
                 <div class="inline-actions">
                     <button id="cumplePrevMonth" class="btn" type="button">Mes anterior</button>
                     <strong id="cumpleMonthLabel" class="cumple-month-label">-</strong>
                     <button id="cumpleNextMonth" class="btn" type="button">Mes siguiente</button>
                     <button id="cumpleGoToday" class="btn primary" type="button">Mes actual</button>
                 </div>
-                <p id="cumpleResumen">Selecciona un dia del almanaque para ver los cumpleanos.</p>
+                <p id="cumpleResumen">Selecciona un dia del almanaque para ver los cumpleaños.</p>
                 <div id="cumpleCalendar" class="cumple-calendar"></div>
                 <div class="table-wrap">
                     <table>
@@ -289,7 +300,7 @@
                         <input id="peluqueroTelefono" type="text">
                     </label>
                     <label>
-                        Fecha de cumpleanos
+                        Fecha de cumpleaños
                         <input id="peluqueroFechaCumple" type="text" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10">
                     </label>
                     <label>
@@ -330,7 +341,7 @@
                             <tr>
                                 <th>Nombre</th>
                                 <th>Telefono</th>
-                                <th>Cumpleanos</th>
+                                <th>Cumpleaños</th>
                                 <th>Comision</th>
                                 <th>Horario</th>
                                 <th>Activo</th>
@@ -531,7 +542,7 @@
                     <input id="nuevoClienteTurnoInstagram" type="text" placeholder="@usuario">
                 </label>
                 <label>
-                    Fecha de cumpleanos
+                    Fecha de cumpleaños
                     <input id="nuevoClienteTurnoFechaCumple" type="text" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10">
                 </label>
                 <div class="inline-actions">

@@ -17,6 +17,7 @@ const state = {
     },
     peluqueros: [],
     turnos: [],
+    turnosDelMomento: [],
     clientes: [],
     serviciosCaja: [],
     selectedClienteId: null,
@@ -28,10 +29,20 @@ const state = {
     usuarios: []
 };
 
+let turnosAhoraIntervalId = null;
+const turnosAlertados = new Set();
+
 const $ = (id) => document.getElementById(id);
 
+function getLocalDateString(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 function today() {
-    return new Date().toISOString().slice(0, 10);
+    return getLocalDateString();
 }
 
 function isAgendaRole() {
@@ -57,6 +68,48 @@ function normalizeText(value) {
 
 function normalizeDigits(value) {
     return String(value || '').replace(/\D/g, '').trim();
+}
+
+function getCurrentMinutesLocal() {
+    const now = new Date();
+    return (now.getHours() * 60) + now.getMinutes();
+}
+
+function getTurnoEstado(turno) {
+    return String(turno?.estado || 'pendiente').trim().toLowerCase();
+}
+
+function getTurnoEstadoLabel(estado) {
+    if (estado === 'atendido') {
+        return 'Atendido';
+    }
+
+    if (estado === 'perdido') {
+        return 'Perdido';
+    }
+
+    return 'Pendiente';
+}
+
+function getTurnoEstadoClass(estado) {
+    if (estado === 'atendido') {
+        return 'status-ok';
+    }
+
+    if (estado === 'perdido') {
+        return 'status-lost';
+    }
+
+    return 'status-pending';
+}
+
+function isTurnoDelMomento(turno, fechaActual = getLocalDateString(), minutosActuales = getCurrentMinutesLocal()) {
+    return (
+        getTurnoEstado(turno) === 'pendiente'
+        && String(turno?.fecha || '') === fechaActual
+        && Number(turno?.inicioMinutos) <= minutosActuales
+        && Number(turno?.finMinutos) > minutosActuales
+    );
 }
 
 function formatCurrency(value) {
@@ -430,9 +483,37 @@ function renderServiciosTable() {
     `).join('');
 }
 
+function renderTurnoActionButtons(turno, includeDelete = false) {
+    const estado = getTurnoEstado(turno);
+    const buttons = [];
+
+    if (estado === 'pendiente') {
+        buttons.push(
+            `<button class="btn primary" type="button" data-action="mark-turno-status" data-id="${turno._id}" data-status="atendido">Atendido</button>`
+        );
+        buttons.push(
+            `<button class="btn danger" type="button" data-action="mark-turno-status" data-id="${turno._id}" data-status="perdido">Perdido</button>`
+        );
+    } else {
+        buttons.push(
+            `<button class="btn" type="button" data-action="mark-turno-status" data-id="${turno._id}" data-status="pendiente">Volver a pendiente</button>`
+        );
+    }
+
+    if (includeDelete) {
+        buttons.push(
+            `<button class="btn danger" type="button" data-action="delete-turno" data-id="${turno._id}">Eliminar</button>`
+        );
+    }
+
+    return `<div class="row-actions">${buttons.join('')}</div>`;
+}
+
 function renderTurnosTable() {
     const body = $('turnosTableBody');
     const peluqueroSeleccionado = $('turnosFiltroPeluquero')?.value || '';
+    const fechaActual = getLocalDateString();
+    const minutosActuales = getCurrentMinutesLocal();
     const turnosVisibles = state.turnos.filter((turno) => {
         if (!peluqueroSeleccionado) {
             return true;
@@ -441,7 +522,7 @@ function renderTurnosTable() {
     });
 
     if (!turnosVisibles.length) {
-        body.innerHTML = '<tr><td colspan="6">No hay reservas para ese filtro.</td></tr>';
+        body.innerHTML = '<tr><td colspan="7">No hay reservas para ese filtro.</td></tr>';
         return;
     }
 
@@ -451,22 +532,90 @@ function renderTurnosTable() {
         const fotosCell = hasPhotos
             ? `<button class="btn photo-thumb-btn" type="button" data-action="view-turno-fotos" data-id="${t._id}">Ver fotos</button>`
             : '-';
-
-        const actionCell = isAgendaRole()
-            ? '-'
-            : `<button class="btn danger" type="button" data-action="delete-turno" data-id="${t._id}">Eliminar</button>`;
+        const estado = getTurnoEstado(t);
+        const estadoCell = `<span class="status-chip ${getTurnoEstadoClass(estado)}">${getTurnoEstadoLabel(estado)}</span>`;
+        const rowClass = isTurnoDelMomento(t, fechaActual, minutosActuales) ? 'turno-row turno-current' : 'turno-row';
 
         return `
-            <tr>
+            <tr class="${rowClass}">
                 <td>${t.horaInicio} - ${t.horaFin}</td>
                 <td>${escapeHtml(t.peluquero?.nombre || '-')}</td>
                 <td>${escapeHtml(servicio)}</td>
                 <td>${escapeHtml(t.cliente || '-')}</td>
+                <td>${estadoCell}</td>
                 <td>${fotosCell}</td>
-                <td>${actionCell}</td>
+                <td>${renderTurnoActionButtons(t, !isAgendaRole())}</td>
             </tr>
         `;
     }).join('');
+}
+
+function renderTurnosAhoraPanel() {
+    const panel = $('turnosAhoraPanel');
+    const resumen = $('turnosAhoraResumen');
+    const list = $('turnosAhoraList');
+
+    if (!panel || !resumen || !list) {
+        return;
+    }
+
+    if (!state.turnosDelMomento.length) {
+        panel.classList.add('hidden');
+        resumen.textContent = 'Avisos de turnos que ya estan en horario.';
+        list.innerHTML = '';
+        return;
+    }
+
+    panel.classList.remove('hidden');
+    resumen.textContent = `Hay ${state.turnosDelMomento.length} turno(s) en horario para atender ahora.`;
+    list.innerHTML = state.turnosDelMomento.map((turno) => {
+        const servicio = state.servicios[turno.servicio]?.label || turno.servicio;
+        return `
+            <article class="turno-alert-card">
+                <div class="turno-alert-copy">
+                    <strong>${escapeHtml(turno.cliente || 'Cliente sin nombre')} - ${escapeHtml(turno.peluquero?.nombre || 'Sin peluquero')}</strong>
+                    <p>${escapeHtml(turno.horaInicio)} a ${escapeHtml(turno.horaFin)} · ${escapeHtml(servicio)}</p>
+                </div>
+                ${renderTurnoActionButtons(turno)}
+            </article>
+        `;
+    }).join('');
+}
+
+function syncTurnoInCollection(collection, turnoActualizado) {
+    const index = collection.findIndex((item) => item._id === turnoActualizado._id);
+    if (index >= 0) {
+        collection[index] = turnoActualizado;
+    }
+}
+
+function syncTurnoActualizado(turnoActualizado) {
+    syncTurnoInCollection(state.turnos, turnoActualizado);
+    syncTurnoInCollection(state.turnosDelMomento, turnoActualizado);
+
+    if (!isTurnoDelMomento(turnoActualizado)) {
+        state.turnosDelMomento = state.turnosDelMomento.filter((item) => item._id !== turnoActualizado._id);
+    }
+
+    renderTurnosTable();
+    renderTurnosAhoraPanel();
+}
+
+function avisarTurnosDelMomento(turnos) {
+    const nuevos = turnos.filter((turno) => !turnosAlertados.has(turno._id));
+    if (!nuevos.length) {
+        return;
+    }
+
+    nuevos.forEach((turno) => {
+        turnosAlertados.add(turno._id);
+    });
+
+    const mensaje = nuevos
+        .map((turno) => `${turno.horaInicio} ${turno.cliente || 'Cliente sin nombre'} con ${turno.peluquero?.nombre || 'Sin peluquero'}`)
+        .join(' | ');
+
+    showMessage(`Turno en horario: ${mensaje}`, 'success');
 }
 
 function completarClientesDatalist() {
@@ -568,6 +717,7 @@ function fillClienteForm(clienteId) {
         return;
     }
 
+    debugger;
     const parsed = splitFullName(cliente.nombre);
     $('clienteIdInput').value = cliente._id;
     $('clienteFormTitle').textContent = 'Editar cliente';
@@ -1567,9 +1717,73 @@ async function registrarTurno(payload) {
 
     await Promise.all([
         cargarTurnos(),
+        cargarTurnosDelMomento({ silent: true }),
         cargarClientes(),
         !isAgendaRole() ? cargarDashboard() : Promise.resolve()
     ]);
+}
+
+async function cargarTurnosDelMomento(options = {}) {
+    const { silent = false } = options;
+
+    if (!state.token) {
+        state.turnosDelMomento = [];
+        renderTurnosAhoraPanel();
+        return;
+    }
+
+    const fechaActual = getLocalDateString();
+    const turnosHoy = await apiFetch(`/api/turnos?fecha=${fechaActual}`);
+    const turnosEnHorario = turnosHoy.filter((turno) => isTurnoDelMomento(turno, fechaActual, getCurrentMinutesLocal()));
+
+    state.turnosDelMomento = turnosEnHorario;
+    renderTurnosAhoraPanel();
+
+    if (!silent) {
+        avisarTurnosDelMomento(turnosEnHorario);
+    }
+
+    if ($('turnosFiltroFecha')?.value === fechaActual) {
+        state.turnos = turnosHoy;
+        renderTurnosTable();
+    }
+}
+
+function stopTurnosAhoraWatcher() {
+    if (turnosAhoraIntervalId) {
+        clearInterval(turnosAhoraIntervalId);
+        turnosAhoraIntervalId = null;
+    }
+}
+
+function startTurnosAhoraWatcher() {
+    stopTurnosAhoraWatcher();
+
+    if (!state.token) {
+        state.turnosDelMomento = [];
+        renderTurnosAhoraPanel();
+        return;
+    }
+
+    cargarTurnosDelMomento().catch((error) => {
+        console.warn('No se pudieron cargar los turnos del momento:', error.message);
+    });
+
+    turnosAhoraIntervalId = window.setInterval(() => {
+        cargarTurnosDelMomento().catch((error) => {
+            console.warn('No se pudieron refrescar los turnos del momento:', error.message);
+        });
+    }, 30000);
+}
+
+async function actualizarEstadoTurno(turnoId, estado) {
+    const actualizado = await apiFetch(`/api/turnos/${turnoId}/estado`, {
+        method: 'PATCH',
+        body: { estado }
+    });
+
+    syncTurnoActualizado(actualizado);
+    await cargarTurnosDelMomento({ silent: true });
 }
 
 async function cargarConfig() {
@@ -1677,6 +1891,7 @@ async function cargarTodoInicial() {
     await cargarPeluqueros();
     await cargarClientes();
     await cargarTurnos();
+    await cargarTurnosDelMomento({ silent: true });
 
     if (!isAgendaRole()) {
         await Promise.all([
@@ -1702,6 +1917,10 @@ function showLogin() {
 
 async function restoreSession() {
     if (!state.token) {
+        stopTurnosAhoraWatcher();
+        state.turnosDelMomento = [];
+        turnosAlertados.clear();
+        renderTurnosAhoraPanel();
         showLogin();
         return;
     }
@@ -1717,11 +1936,14 @@ async function restoreSession() {
 
         showApp();
         await cargarTodoInicial();
+        startTurnosAhoraWatcher();
     } catch (error) {
         localStorage.removeItem('agendaToken');
         localStorage.removeItem('agendaUser');
         state.token = null;
         state.user = null;
+        stopTurnosAhoraWatcher();
+        turnosAlertados.clear();
         showLogin();
     }
 }
@@ -1815,6 +2037,7 @@ function attachEvents() {
             $('loginForm').reset();
             showApp();
             await cargarTodoInicial();
+            startTurnosAhoraWatcher();
             showMessage('Sesion iniciada correctamente');
         } catch (error) {
             showMessage(error.message, 'error');
@@ -1832,6 +2055,10 @@ function attachEvents() {
         localStorage.removeItem('agendaUser');
         state.token = null;
         state.user = null;
+        stopTurnosAhoraWatcher();
+        state.turnosDelMomento = [];
+        turnosAlertados.clear();
+        renderTurnosAhoraPanel();
         showLogin();
     });
 
@@ -2101,6 +2328,7 @@ function attachEvents() {
                 fechaCumpleanos: $('clienteFechaCumpleInput').value
             };
 
+            debugger;
             let saved = null;
             if (clienteId) {
                 if (foto1) {
@@ -2143,8 +2371,9 @@ function attachEvents() {
         resetClienteForm();
     });
 
-    $('turnosTableBody').addEventListener('click', async (event) => {
+    const handleTurnoActionClick = async (event) => {
         const deleteBtn = event.target.closest('button[data-action="delete-turno"]');
+        const statusBtn = event.target.closest('button[data-action="mark-turno-status"]');
         const viewPhotosBtn = event.target.closest('button[data-action="view-turno-fotos"]');
 
         if (viewPhotosBtn) {
@@ -2152,22 +2381,37 @@ function attachEvents() {
             return;
         }
 
-        if (!deleteBtn) {
+        if (statusBtn) {
+            try {
+                await actualizarEstadoTurno(statusBtn.dataset.id, statusBtn.dataset.status);
+                showMessage(`Turno marcado como ${getTurnoEstadoLabel(statusBtn.dataset.status).toLowerCase()}`);
+            } catch (error) {
+                showMessage(error.message, 'error');
+            }
             return;
         }
 
-        if (!confirm('Eliminar este turno?')) {
-            return;
-        }
+        if (deleteBtn) {
+            if (!confirm('Eliminar este turno?')) {
+                return;
+            }
 
-        try {
-            await apiFetch(`/api/turnos/${deleteBtn.dataset.id}`, { method: 'DELETE' });
-            await Promise.all([cargarTurnos(), !isAgendaRole() ? cargarDashboard() : Promise.resolve()]);
-            showMessage('Turno eliminado');
-        } catch (error) {
-            showMessage(error.message, 'error');
+            try {
+                await apiFetch(`/api/turnos/${deleteBtn.dataset.id}`, { method: 'DELETE' });
+                await Promise.all([
+                    cargarTurnos(),
+                    cargarTurnosDelMomento({ silent: true }),
+                    !isAgendaRole() ? cargarDashboard() : Promise.resolve()
+                ]);
+                showMessage('Turno eliminado');
+            } catch (error) {
+                showMessage(error.message, 'error');
+            }
         }
-    });
+    };
+
+    $('turnosTableBody').addEventListener('click', handleTurnoActionClick);
+    $('turnosAhoraList').addEventListener('click', handleTurnoActionClick);
 
     $('peluqueroForm').addEventListener('submit', async (event) => {
         event.preventDefault();
