@@ -164,8 +164,9 @@
                 <h3>Agenda de Clientes</h3>
                 <div class="clientes-layout">
                     <aside class="clientes-form-panel">
-                        <h4>Nuevo cliente</h4>
+                        <h4 id="clienteFormTitle">Nuevo cliente</h4>
                         <form id="clienteForm" class="form-grid">
+                            <input id="clienteIdInput" type="hidden">
                             <label>
                                 Nombre
                                 <input id="clienteNombreInput" type="text" required>
@@ -184,7 +185,7 @@
                             </label>
                             <label>
                                 Fecha de cumpleanos
-                                <input id="clienteFechaCumpleInput" type="date">
+                                <input id="clienteFechaCumpleInput" type="text" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10">
                             </label>
 
                             <div class="foto-upload-group">
@@ -209,14 +210,17 @@
                                 <img id="clienteFoto2Preview" class="turno-photo-preview hidden" alt="Foto cliente 2">
                             </div>
 
-                            <button type="submit" class="btn primary">Guardar cliente</button>
+                            <div class="inline-actions">
+                                <button id="clienteSubmitBtn" type="submit" class="btn primary">Guardar cliente</button>
+                                <button id="cancelEditCliente" type="button" class="btn hidden">Cancelar edicion</button>
+                            </div>
                         </form>
                     </aside>
                     <div class="clientes-right-panel">
                         <div class="clientes-list-panel">
                             <div class="inline-actions">
                                 <input id="clientesSearch" type="text" placeholder="Buscar cliente...">
-                                <button id="reloadClientes" class="btn" type="button">Actualizar</button>
+                                <button id="editSelectedClienteBtn" class="btn" type="button">Editar</button>
                             </div>
                             <div id="clientesList" class="clientes-list"></div>
                         </div>
@@ -229,33 +233,12 @@
                                 <p><strong>Cumpleanos:</strong> <span id="clienteFechaCumple">-</span></p>
                                 <p><strong>Ultima atencion:</strong> <span id="clienteUltimaAtencion">-</span></p>
                                 <p><strong>Peluquero ultima atencion:</strong> <span id="clienteUltimaAtencionPeluquero">-</span></p>
+                                <div class="inline-actions">
+                                    <button id="deleteSelectedClienteBtn" class="btn danger" type="button">Eliminar cliente</button>
+                                </div>
                                 <div class="cliente-fotos">
                                     <img id="clienteFoto1" class="cliente-foto hidden" alt="Foto cliente 1" data-slot="1">
                                     <img id="clienteFoto2" class="cliente-foto hidden" alt="Foto cliente 2" data-slot="2">
-                                </div>
-                                <div class="cliente-fotos-editor">
-                                    <h5>Actualizar fotos del cliente</h5>
-                                    <div class="foto-upload-group">
-                                        <label>Foto 1</label>
-                                        <input id="clienteEditFoto1Input" type="file" accept="image/*" class="hidden-file-input">
-                                        <div class="inline-actions">
-                                            <button type="button" class="btn" onclick="openClienteEditPhotoPicker('1','camera')">Tomar foto</button>
-                                            <button type="button" class="btn" onclick="openClienteEditPhotoPicker('1','gallery')">Elegir existente</button>
-                                        </div>
-                                        <small id="clienteEditFoto1Estado" class="photo-status"></small>
-                                        <img id="clienteEditFoto1Preview" class="turno-photo-preview hidden" alt="Nueva foto cliente 1">
-                                    </div>
-                                    <div class="foto-upload-group">
-                                        <label>Foto 2</label>
-                                        <input id="clienteEditFoto2Input" type="file" accept="image/*" class="hidden-file-input">
-                                        <div class="inline-actions">
-                                            <button type="button" class="btn" onclick="openClienteEditPhotoPicker('2','camera')">Tomar foto</button>
-                                            <button type="button" class="btn" onclick="openClienteEditPhotoPicker('2','gallery')">Elegir existente</button>
-                                        </div>
-                                        <small id="clienteEditFoto2Estado" class="photo-status"></small>
-                                        <img id="clienteEditFoto2Preview" class="turno-photo-preview hidden" alt="Nueva foto cliente 2">
-                                    </div>
-                                    <button id="guardarFotosClienteSeleccionado" type="button" class="btn primary">Guardar cambios de fotos</button>
                                 </div>
                             </div>
                         </article>
@@ -266,20 +249,20 @@
             <section id="tab-cumpleanos" class="tab-panel card hidden">
                 <h3>Cumpleanos</h3>
                 <div class="inline-actions">
-                    <label>
-                        Seleccionar dia
-                        <input id="cumpleFecha" type="date">
-                    </label>
-                    <button id="buscarCumples" class="btn primary" type="button">Buscar cumpleanos</button>
+                    <button id="cumplePrevMonth" class="btn" type="button">Mes anterior</button>
+                    <strong id="cumpleMonthLabel" class="cumple-month-label">-</strong>
+                    <button id="cumpleNextMonth" class="btn" type="button">Mes siguiente</button>
+                    <button id="cumpleGoToday" class="btn primary" type="button">Mes actual</button>
                 </div>
-                <p id="cumpleResumen">Selecciona una fecha para ver cumpleanos.</p>
+                <p id="cumpleResumen">Selecciona un dia del almanaque para ver los cumpleanos.</p>
+                <div id="cumpleCalendar" class="cumple-calendar"></div>
                 <div class="table-wrap">
                     <table>
                         <thead>
                             <tr>
+                                <th>Fecha</th>
                                 <th>Tipo</th>
                                 <th>Nombre</th>
-                                <th>Apellido</th>
                                 <th>Telefono</th>
                                 <th>WhatsApp</th>
                             </tr>
@@ -307,7 +290,7 @@
                     </label>
                     <label>
                         Fecha de cumpleanos
-                        <input id="peluqueroFechaCumple" type="date">
+                        <input id="peluqueroFechaCumple" type="text" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10">
                     </label>
                     <label>
                         Comision (%)
@@ -549,7 +532,7 @@
                 </label>
                 <label>
                     Fecha de cumpleanos
-                    <input id="nuevoClienteTurnoFechaCumple" type="date">
+                    <input id="nuevoClienteTurnoFechaCumple" type="text" placeholder="DD/MM/YYYY" inputmode="numeric" maxlength="10">
                 </label>
                 <div class="inline-actions">
                     <button type="submit" class="btn primary">Guardar y continuar</button>
@@ -591,4 +574,3 @@
     <script src="script.js"></script>
 </body>
 </html>
-

@@ -30,11 +30,29 @@ function normalizeOptionalDate(value) {
         return '';
     }
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-        throw new Error('Fecha de cumpleanos invalida');
+    let day;
+    let month;
+    let year;
+
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
+        [day, month, year] = text.split('/').map(Number);
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        [year, month, day] = text.split('-').map(Number);
+    } else {
+        throw new Error('Fecha de cumpleanos invalida. Usa DD/MM/YYYY');
     }
 
-    return text;
+    const date = new Date(year, month - 1, day);
+    if (
+        Number.isNaN(date.getTime())
+        || date.getFullYear() !== year
+        || date.getMonth() !== month - 1
+        || date.getDate() !== day
+    ) {
+        throw new Error('Fecha de cumpleanos invalida. Usa DD/MM/YYYY');
+    }
+
+    return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
 }
 
 router.get('/', authRequired, async (req, res) => {

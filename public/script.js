@@ -21,6 +21,8 @@ const state = {
     serviciosCaja: [],
     selectedClienteId: null,
     selectedTurnoClienteId: null,
+    selectedCumpleDate: null,
+    currentCumpleMonth: null,
     pendingTurnoPayload: null,
     atenciones: [],
     usuarios: []
@@ -366,7 +368,7 @@ function renderCajaServiciosSelect() {
 
     const options = state.serviciosCaja
         .map((servicio) => (
-            `<option value="${servicio._id}">${escapeHtml(servicio.nombre)} - $${formatCurrency(servicio.precio)}</option>`
+            `<option value="${servicio._id}">${escapeHtml(servicio.nombre)}}</option>`
         ))
         .join('');
 
@@ -518,7 +520,6 @@ function renderClienteDetalle() {
     if (!cliente) {
         $('clienteDetalleVacio').classList.remove('hidden');
         $('clienteDetalle').classList.add('hidden');
-        clearClienteEditPhotos();
         return;
     }
 
@@ -527,10 +528,9 @@ function renderClienteDetalle() {
     $('clienteNombre').textContent = cliente.nombre || '-';
     $('clienteTelefono').textContent = cliente.telefono || '-';
     $('clienteInstagram').textContent = cliente.instagram || '-';
-    $('clienteFechaCumple').textContent = cliente.fechaCumpleanos || '-';
+    $('clienteFechaCumple').textContent = formatDateLabel(cliente.fechaCumpleanos);
     $('clienteUltimaAtencion').textContent = cliente.ultimaAtencion || '-';
     $('clienteUltimaAtencionPeluquero').textContent = cliente.ultimaAtencionPeluquero || '-';
-    clearClienteEditPhotos();
 
     const foto1 = $('clienteFoto1');
     const foto2 = $('clienteFoto2');
@@ -552,30 +552,105 @@ function renderClienteDetalle() {
     }
 }
 
+function resetClienteForm() {
+    $('clienteIdInput').value = '';
+    $('clienteFormTitle').textContent = 'Nuevo cliente';
+    $('clienteSubmitBtn').textContent = 'Guardar cliente';
+    $('cancelEditCliente').classList.add('hidden');
+    $('clienteForm').reset();
+    clearClientePhotos();
+}
+
+function fillClienteForm(clienteId) {
+    const cliente = state.clientes.find((item) => item._id === clienteId);
+    if (!cliente) {
+        showMessage('Selecciona un cliente valido para editar', 'error');
+        return;
+    }
+
+    const parsed = splitFullName(cliente.nombre);
+    $('clienteIdInput').value = cliente._id;
+    $('clienteFormTitle').textContent = 'Editar cliente';
+    $('clienteSubmitBtn').textContent = 'Guardar cambios';
+    $('cancelEditCliente').classList.remove('hidden');
+    $('clienteNombreInput').value = parsed.nombre || '';
+    $('clienteApellidoInput').value = parsed.apellido || '';
+    $('clienteTelefonoInput').value = cliente.telefono || '';
+    $('clienteInstagramInput').value = cliente.instagram || '';
+    $('clienteFechaCumpleInput').value = formatDateLabel(cliente.fechaCumpleanos);
+    setClienteFormPhoto('1', cliente.foto1 || '');
+    setClienteFormPhoto('2', cliente.foto2 || '');
+}
+
 function getMonthDayFromDateString(value) {
     const text = String(value || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    let parts = null;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        const [year, month, day] = text.split('-').map(Number);
+        parts = { year, month, day };
+    } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
+        const [day, month, year] = text.split('/').map(Number);
+        parts = { year, month, day };
+    } else {
         return null;
     }
 
-    const parts = text.split('-').map(Number);
+    const date = new Date(parts.year, parts.month - 1, parts.day);
+    if (
+        Number.isNaN(date.getTime())
+        || date.getFullYear() !== parts.year
+        || date.getMonth() !== parts.month - 1
+        || date.getDate() !== parts.day
+    ) {
+        return null;
+    }
+
     return {
-        month: parts[1],
-        day: parts[2]
+        month: parts.month,
+        day: parts.day
     };
 }
 
 function formatDateLabel(dateString) {
-    const parsed = new Date(`${dateString}T00:00:00`);
-    if (Number.isNaN(parsed.getTime())) {
-        return dateString;
+    const text = String(dateString || '').trim();
+    if (!text) {
+        return '-';
     }
 
-    return parsed.toLocaleDateString('es-AR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-    });
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
+        return text;
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        const parsed = new Date(`${text}T00:00:00`);
+        if (!Number.isNaN(parsed.getTime())) {
+            return parsed.toLocaleDateString('es-AR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        }
+    }
+
+    return text;
+}
+
+function formatBirthdayInputValue(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+    const parts = [];
+
+    if (digits.length > 0) {
+        parts.push(digits.slice(0, 2));
+    }
+    if (digits.length > 2) {
+        parts.push(digits.slice(2, 4));
+    }
+    if (digits.length > 4) {
+        parts.push(digits.slice(4, 8));
+    }
+
+    return parts.join('/');
 }
 
 function toWhatsAppNumber(rawPhone) {
@@ -604,73 +679,236 @@ function buildCumpleMessage(clienteNombre, fechaSeleccionada) {
     return `Hola ${String(clienteNombre || '').trim()}, el dia ${fechaTexto} es tu cumple tenes un corte de pelo gratis avisanos tu horario para reservar suerte.`;
 }
 
-function renderCumpleanos() {
-    const fechaSeleccionada = $('cumpleFecha')?.value || '';
-    const resumen = $('cumpleResumen');
-    const body = $('cumpleTableBody');
+function toDateStringLocal(date) {
+    return date.toISOString().slice(0, 10);
+}
 
-    if (!resumen || !body) {
-        return;
+function getBirthdayEntriesForDate(dateString) {
+    const target = getMonthDayFromDateString(dateString);
+    if (!target) {
+        return [];
     }
 
-    if (!fechaSeleccionada) {
-        resumen.textContent = 'Selecciona una fecha para ver cumpleanos.';
-        body.innerHTML = '<tr><td colspan="5">Sin datos para mostrar.</td></tr>';
-        return;
-    }
-
-    const selected = getMonthDayFromDateString(fechaSeleccionada);
-    if (!selected) {
-        resumen.textContent = 'Fecha invalida.';
-        body.innerHTML = '<tr><td colspan="5">Fecha invalida.</td></tr>';
-        return;
-    }
-
-    const cumpleanerosClientes = state.clientes.filter((cliente) => {
+    const clientes = state.clientes.filter((cliente) => {
         const cumple = getMonthDayFromDateString(cliente.fechaCumpleanos);
-        return cumple && cumple.month === selected.month && cumple.day === selected.day;
+        return cumple && cumple.month === target.month && cumple.day === target.day;
     }).map((cliente) => ({
+        fecha: dateString,
         tipo: 'Cliente',
         tipoClass: 'cumple-badge-cliente',
         nombreCompleto: cliente.nombre || '',
         telefono: String(cliente.telefono || '').trim()
     }));
 
-    const cumpleanerosPersonal = state.peluqueros.filter((peluquero) => {
+    const personal = state.peluqueros.filter((peluquero) => {
         const cumple = getMonthDayFromDateString(peluquero.fechaCumpleanos);
-        return cumple && cumple.month === selected.month && cumple.day === selected.day;
+        return cumple && cumple.month === target.month && cumple.day === target.day;
     }).map((peluquero) => ({
+        fecha: dateString,
         tipo: 'Personal',
         tipoClass: 'cumple-badge-personal',
         nombreCompleto: peluquero.nombre || '',
         telefono: String(peluquero.telefono || '').trim()
     }));
 
-    const cumpleaneros = cumpleanerosClientes.concat(cumpleanerosPersonal);
+    return clientes.concat(personal);
+}
 
-    if (!cumpleaneros.length) {
-        resumen.textContent = `No hay cumpleanos para el ${formatDateLabel(fechaSeleccionada)}.`;
-        body.innerHTML = '<tr><td colspan="5">No hay personas para esa fecha.</td></tr>';
+function getCumpleMonthDate() {
+    if (state.currentCumpleMonth) {
+        return new Date(`${state.currentCumpleMonth}-01T00:00:00`);
+    }
+    const date = new Date();
+    date.setDate(1);
+    return date;
+}
+
+function setCurrentCumpleMonth(value) {
+    const date = typeof value === 'string'
+        ? new Date(`${value}-01T00:00:00`)
+        : new Date(value);
+    date.setDate(1);
+    state.currentCumpleMonth = toDateStringLocal(date).slice(0, 7);
+}
+
+function getCumpleMonthData() {
+    const monthDate = getCumpleMonthDate();
+    const year = monthDate.getFullYear();
+    const month = monthDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const byDate = new Map();
+    const entries = [];
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+        const date = new Date(year, month, day);
+        const dateString = toDateStringLocal(date);
+        const matches = getBirthdayEntriesForDate(dateString);
+        if (!matches.length) {
+            continue;
+        }
+        byDate.set(dateString, matches);
+        entries.push(...matches);
+    }
+
+    return {
+        year,
+        month,
+        byDate,
+        entries
+    };
+}
+
+function formatMonthYearLabel(year, month) {
+    return new Date(year, month, 1).toLocaleDateString('es-AR', {
+        month: 'long',
+        year: 'numeric'
+    });
+}
+
+function changeCumpleMonth(offset) {
+    const current = getCumpleMonthDate();
+    current.setMonth(current.getMonth() + offset);
+    setCurrentCumpleMonth(current);
+
+    const selectedMonth = state.selectedCumpleDate ? state.selectedCumpleDate.slice(0, 7) : '';
+    if (selectedMonth !== state.currentCumpleMonth) {
+        state.selectedCumpleDate = null;
+    }
+
+    renderCumpleanos();
+}
+
+function normalizeCumpleSelection(monthData) {
+    if (state.selectedCumpleDate && state.selectedCumpleDate.slice(0, 7) === state.currentCumpleMonth) {
         return;
     }
 
-    resumen.textContent = `Cumpleanos del ${formatDateLabel(fechaSeleccionada)}: ${cumpleaneros.length} persona(s) - ${cumpleanerosClientes.length} cliente(s), ${cumpleanerosPersonal.length} personal.`;
-    body.innerHTML = cumpleaneros.map((persona) => {
+    const todayValue = today();
+    if (monthData.byDate.has(todayValue) && todayValue.slice(0, 7) === state.currentCumpleMonth) {
+        state.selectedCumpleDate = todayValue;
+        return;
+    }
+
+    const firstBirthdayDate = Array.from(monthData.byDate.keys()).sort()[0] || null;
+    state.selectedCumpleDate = firstBirthdayDate;
+}
+
+function renderCumpleCalendar(monthData) {
+    const container = $('cumpleCalendar');
+    const label = $('cumpleMonthLabel');
+    if (!container) {
+        return;
+    }
+
+    const weekNames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
+    const firstOfMonth = new Date(monthData.year, monthData.month, 1);
+    const daysInMonth = new Date(monthData.year, monthData.month + 1, 0).getDate();
+    const startOffset = (firstOfMonth.getDay() + 6) % 7;
+    const cells = [];
+    const todayValue = today();
+
+    if (label) {
+        label.textContent = formatMonthYearLabel(monthData.year, monthData.month);
+    }
+
+    for (let i = 0; i < startOffset; i += 1) {
+        cells.push('<div class="cumple-day empty"></div>');
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+        const date = new Date(monthData.year, monthData.month, day);
+        const dateString = toDateStringLocal(date);
+        const matches = monthData.byDate.get(dateString) || [];
+        const classes = ['cumple-day'];
+
+        if (matches.length) {
+            classes.push('has-birthday');
+        }
+        if (state.selectedCumpleDate === dateString) {
+            classes.push('selected');
+        }
+        if (todayValue === dateString) {
+            classes.push('today');
+        }
+
+        const badge = matches.length ? `<span class="cumple-day-count">${matches.length}</span>` : '';
+        cells.push(`
+            <button class="${classes.join(' ')}" type="button" data-action="select-cumple-day" data-date="${dateString}" title="${matches.length ? `${matches.length} cumpleanos` : 'Sin cumpleanos'}">
+                <span class="cumple-day-number">${day}</span>
+                ${badge}
+            </button>
+        `);
+    }
+
+    container.innerHTML = `
+        <section class="cumple-month card">
+            <div class="cumple-weekdays">
+                ${weekNames.map((name) => `<span>${name}</span>`).join('')}
+            </div>
+            <div class="cumple-grid">
+                ${cells.join('')}
+            </div>
+        </section>
+    `;
+}
+
+function renderCumpleanos() {
+    const resumen = $('cumpleResumen');
+    const body = $('cumpleTableBody');
+    if (!resumen || !body) {
+        return;
+    }
+
+    const monthData = getCumpleMonthData();
+    normalizeCumpleSelection(monthData);
+    const cumpleaneros = monthData.entries;
+    const cumpleanerosClientes = cumpleaneros.filter((persona) => persona.tipo === 'Cliente');
+    const cumpleanerosPersonal = cumpleaneros.filter((persona) => persona.tipo === 'Personal');
+    const selectedDate = state.selectedCumpleDate;
+    const selectedEntries = selectedDate ? (monthData.byDate.get(selectedDate) || []) : [];
+
+    renderCumpleCalendar(monthData);
+
+    if (!cumpleaneros.length) {
+        resumen.textContent = `No hay cumpleanos cargados en ${formatMonthYearLabel(monthData.year, monthData.month)}.`;
+        body.innerHTML = '<tr><td colspan="5">No hay personas para este mes.</td></tr>';
+        return;
+    }
+
+    if (!selectedDate) {
+        resumen.textContent = `Cumpleanos de ${formatMonthYearLabel(monthData.year, monthData.month)}: ${cumpleaneros.length} persona(s) - ${cumpleanerosClientes.length} cliente(s), ${cumpleanerosPersonal.length} personal. Selecciona un dia verde para ver el detalle.`;
+        body.innerHTML = '<tr><td colspan="5">Selecciona un dia con linea verde para ver los cumpleanos.</td></tr>';
+        return;
+    }
+
+    if (!selectedEntries.length) {
+        resumen.textContent = `No hay cumpleanos para el ${formatDateLabel(selectedDate)}.`;
+        body.innerHTML = '<tr><td colspan="5">No hay personas para la fecha seleccionada.</td></tr>';
+        return;
+    }
+
+    const clientesDelDia = selectedEntries.filter((persona) => persona.tipo === 'Cliente').length;
+    const personalDelDia = selectedEntries.filter((persona) => persona.tipo === 'Personal').length;
+    resumen.textContent = `Cumpleanos del ${formatDateLabel(selectedDate)}: ${selectedEntries.length} persona(s) - ${clientesDelDia} cliente(s), ${personalDelDia} personal.`;
+    body.innerHTML = selectedEntries.map((persona) => {
         const fullName = splitFullName(persona.nombreCompleto);
         const telefono = String(persona.telefono || '').trim();
         const waNumber = toWhatsAppNumber(telefono);
-        const waText = encodeURIComponent(buildCumpleMessage(persona.nombreCompleto, fechaSeleccionada));
+        const waText = encodeURIComponent(buildCumpleMessage(persona.nombreCompleto, persona.fecha));
         const waLink = waNumber ? `https://wa.me/${waNumber}?text=${waText}` : '';
+        const telefonoCell = waLink
+            ? `<a class="cumple-phone-link" href="${waLink}" target="_blank" rel="noopener noreferrer">${escapeHtml(telefono || '-')}</a>`
+            : escapeHtml(telefono || '-');
         const waCell = waLink
             ? `<a class="btn whatsapp-btn" href="${waLink}" target="_blank" rel="noopener noreferrer">WhatsApp</a>`
             : '-';
 
         return `
             <tr>
+                <td>${escapeHtml(formatDateLabel(persona.fecha))}</td>
                 <td><span class="cumple-badge ${persona.tipoClass}">${escapeHtml(persona.tipo)}</span></td>
-                <td>${escapeHtml(fullName.nombre || persona.nombreCompleto || '-')}</td>
-                <td>${escapeHtml(fullName.apellido || '-')}</td>
-                <td>${escapeHtml(telefono || '-')}</td>
+                <td>${escapeHtml(`${fullName.nombre || ''} ${fullName.apellido || ''}`.trim() || persona.nombreCompleto || '-')}</td>
+                <td>${telefonoCell}</td>
                 <td>${waCell}</td>
             </tr>
         `;
@@ -925,7 +1163,7 @@ function fillPeluqueroForm(barberId) {
     $('peluqueroId').value = barber._id;
     $('peluqueroNombre').value = barber.nombre;
     $('peluqueroTelefono').value = barber.telefono || '';
-    $('peluqueroFechaCumple').value = barber.fechaCumpleanos || '';
+    $('peluqueroFechaCumple').value = formatDateLabel(barber.fechaCumpleanos);
     $('peluqueroComision').value = barber.porcentajeComision;
     $('peluqueroActivo').checked = barber.activo;
 
@@ -983,22 +1221,6 @@ function getClientePhotoRefs(slot) {
     };
 }
 
-function getClienteEditPhotoRefs(slot) {
-    if (slot === '1') {
-        return {
-            input: $('clienteEditFoto1Input'),
-            preview: $('clienteEditFoto1Preview'),
-            status: $('clienteEditFoto1Estado')
-        };
-    }
-
-    return {
-        input: $('clienteEditFoto2Input'),
-        preview: $('clienteEditFoto2Preview'),
-        status: $('clienteEditFoto2Estado')
-    };
-}
-
 function setTurnoPhotoStatus(slot, message, isError = false) {
     const { status } = getTurnoPhotoRefs(slot);
     status.textContent = message || '';
@@ -1007,12 +1229,6 @@ function setTurnoPhotoStatus(slot, message, isError = false) {
 
 function setClientePhotoStatus(slot, message, isError = false) {
     const { status } = getClientePhotoRefs(slot);
-    status.textContent = message || '';
-    status.style.color = isError ? '#b91c1c' : '#475569';
-}
-
-function setClienteEditPhotoStatus(slot, message, isError = false) {
-    const { status } = getClienteEditPhotoRefs(slot);
     status.textContent = message || '';
     status.style.color = isError ? '#b91c1c' : '#475569';
 }
@@ -1197,40 +1413,6 @@ async function processClientePhoto(slot) {
     }
 }
 
-async function processClienteEditPhoto(slot) {
-    const refs = getClienteEditPhotoRefs(slot);
-    const file = refs.input.files && refs.input.files[0] ? refs.input.files[0] : null;
-
-    if (!file) {
-        return;
-    }
-
-    try {
-        setClienteEditPhotoStatus(slot, 'Procesando imagen...');
-        const conversion = await convertirImagenABase64(file);
-        refs.input.dataset.base64 = conversion.dataUrl;
-
-        if (conversion.previewable) {
-            refs.preview.src = conversion.dataUrl;
-            refs.preview.classList.remove('hidden');
-        } else {
-            refs.preview.src = '';
-            refs.preview.classList.add('hidden');
-        }
-
-        const kb = Math.round(estimarBytesDesdeDataURL(conversion.dataUrl) / 1024);
-        const suffix = conversion.previewable ? '' : ' - sin vista previa';
-        setClienteEditPhotoStatus(slot, `Lista (${kb} KB)${suffix}`);
-    } catch (error) {
-        refs.input.value = '';
-        delete refs.input.dataset.base64;
-        refs.preview.src = '';
-        refs.preview.classList.add('hidden');
-        setClienteEditPhotoStatus(slot, error.message, true);
-        throw error;
-    }
-}
-
 async function getProcessedTurnoPhoto(slot) {
     const refs = getTurnoPhotoRefs(slot);
 
@@ -1261,19 +1443,21 @@ async function getProcessedClientePhoto(slot) {
     return '';
 }
 
-async function getProcessedClienteEditPhoto(slot) {
-    const refs = getClienteEditPhotoRefs(slot);
+function setClienteFormPhoto(slot, dataUrl) {
+    const refs = getClientePhotoRefs(slot);
+    refs.input.value = '';
+    delete refs.input.dataset.base64;
 
-    if (refs.input.dataset.base64) {
-        return refs.input.dataset.base64;
+    if (dataUrl) {
+        refs.preview.src = dataUrl;
+        refs.preview.classList.remove('hidden');
+        setClientePhotoStatus(slot, 'Foto actual cargada');
+        return;
     }
 
-    if (refs.input.files && refs.input.files[0]) {
-        await processClienteEditPhoto(slot);
-        return refs.input.dataset.base64 || '';
-    }
-
-    return '';
+    refs.preview.src = '';
+    refs.preview.classList.add('hidden');
+    setClientePhotoStatus(slot, '');
 }
 
 function clearTurnoPhotos() {
@@ -1295,22 +1479,6 @@ function clearClientePhotos() {
         refs.preview.src = '';
         refs.preview.classList.add('hidden');
         setClientePhotoStatus(slot, '');
-    });
-}
-
-function clearClienteEditPhotos() {
-    ['1', '2'].forEach((slot) => {
-        const refs = getClienteEditPhotoRefs(slot);
-
-        if (!refs.input || !refs.preview || !refs.status) {
-            return;
-        }
-
-        refs.input.value = '';
-        delete refs.input.dataset.base64;
-        refs.preview.src = '';
-        refs.preview.classList.add('hidden');
-        setClienteEditPhotoStatus(slot, '');
     });
 }
 
@@ -1349,24 +1517,6 @@ function openClientePhotoPicker(slot, source) {
 }
 
 window.openClientePhotoPicker = openClientePhotoPicker;
-
-function openClienteEditPhotoPicker(slot, source) {
-    const refs = getClienteEditPhotoRefs(slot);
-    refs.input.value = '';
-    delete refs.input.dataset.base64;
-
-    if (source === 'camera') {
-        refs.input.setAttribute('capture', 'environment');
-        setClienteEditPhotoStatus(slot, 'Abriendo camara...');
-    } else {
-        refs.input.removeAttribute('capture');
-        setClienteEditPhotoStatus(slot, 'Selecciona una imagen de la galeria');
-    }
-
-    refs.input.click();
-}
-
-window.openClienteEditPhotoPicker = openClienteEditPhotoPicker;
 
 function openFotosModal(fotoSrc1, fotoSrc2) {
     const modal = $('turnoFotoModal');
@@ -1613,27 +1763,27 @@ function attachEvents() {
         }
     });
 
-    $('clienteEditFoto1Input').addEventListener('change', async () => {
-        try {
-            await processClienteEditPhoto('1');
-        } catch (error) {
-            showMessage(error.message, 'error');
-        }
+    $('cumplePrevMonth').addEventListener('click', () => {
+        changeCumpleMonth(-1);
     });
 
-    $('clienteEditFoto2Input').addEventListener('change', async () => {
-        try {
-            await processClienteEditPhoto('2');
-        } catch (error) {
-            showMessage(error.message, 'error');
-        }
+    $('cumpleNextMonth').addEventListener('click', () => {
+        changeCumpleMonth(1);
     });
 
-    $('buscarCumples').addEventListener('click', () => {
+    $('cumpleGoToday').addEventListener('click', () => {
+        setCurrentCumpleMonth(today().slice(0, 7));
+        state.selectedCumpleDate = null;
         renderCumpleanos();
     });
 
-    $('cumpleFecha').addEventListener('change', () => {
+    $('cumpleCalendar').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-action="select-cumple-day"]');
+        if (!button) {
+            return;
+        }
+
+        state.selectedCumpleDate = button.dataset.date;
         renderCumpleanos();
     });
 
@@ -1712,6 +1862,17 @@ function attachEvents() {
             $('turnoFecha').value = adjusted;
             showMessage('Solo se permiten turnos de lunes a sabado', 'error');
         }
+    });
+
+    ['clienteFechaCumpleInput', 'nuevoClienteTurnoFechaCumple', 'peluqueroFechaCumple'].forEach((id) => {
+        const input = $(id);
+        if (!input) {
+            return;
+        }
+
+        input.addEventListener('input', () => {
+            input.value = formatBirthdayInputValue(input.value);
+        });
     });
 
     $('turnoCliente').addEventListener('input', () => {
@@ -1836,9 +1997,38 @@ function attachEvents() {
         renderTurnosTable();
     });
 
-    $('reloadClientes').addEventListener('click', async () => {
+    $('editSelectedClienteBtn').addEventListener('click', () => {
+        if (!state.selectedClienteId) {
+            showMessage('Selecciona un cliente para editar', 'error');
+            return;
+        }
+
+        fillClienteForm(state.selectedClienteId);
+    });
+
+    $('deleteSelectedClienteBtn').addEventListener('click', async () => {
+        const clienteId = state.selectedClienteId;
+        if (!clienteId) {
+            showMessage('Selecciona un cliente para eliminar', 'error');
+            return;
+        }
+
+        const cliente = state.clientes.find((item) => item._id === clienteId);
+        const nombre = cliente?.nombre || 'este cliente';
+        if (!confirm(`Eliminar a ${nombre}?`)) {
+            return;
+        }
+
         try {
+            await apiFetch(`/api/clientes/${clienteId}`, { method: 'DELETE' });
+
+            if ($('clienteIdInput').value === clienteId) {
+                resetClienteForm();
+            }
+
+            state.selectedClienteId = null;
             await cargarClientes();
+            showMessage('Cliente eliminado correctamente');
         } catch (error) {
             showMessage(error.message, 'error');
         }
@@ -1888,44 +2078,11 @@ function attachEvents() {
         openFotosModal(cliente.foto2, cliente.foto1);
     });
 
-    $('guardarFotosClienteSeleccionado').addEventListener('click', async () => {
-        try {
-            const clienteId = state.selectedClienteId;
-            if (!clienteId) {
-                throw new Error('Selecciona un cliente para actualizar fotos');
-            }
-
-            const foto1 = await getProcessedClienteEditPhoto('1');
-            const foto2 = await getProcessedClienteEditPhoto('2');
-
-            const body = {};
-            if (foto1) {
-                body.foto1 = foto1;
-            }
-            if (foto2) {
-                body.foto2 = foto2;
-            }
-
-            if (!Object.keys(body).length) {
-                throw new Error('Selecciona al menos una foto para actualizar');
-            }
-
-            await apiFetch(`/api/clientes/${clienteId}/fotos`, {
-                method: 'PUT',
-                body
-            });
-
-            await cargarClientes();
-            showMessage('Fotos del cliente actualizadas');
-        } catch (error) {
-            showMessage(error.message, 'error');
-        }
-    });
-
     $('clienteForm').addEventListener('submit', async (event) => {
         event.preventDefault();
 
         try {
+            const clienteId = $('clienteIdInput').value.trim();
             const nombre = $('clienteNombreInput').value.trim();
             const apellido = $('clienteApellidoInput').value.trim();
 
@@ -1936,33 +2093,54 @@ function attachEvents() {
             const foto1 = await getProcessedClientePhoto('1');
             const foto2 = await getProcessedClientePhoto('2');
 
-            if (!foto1 || !foto2) {
-                throw new Error('Debes cargar las 2 fotos del cliente');
+            const body = {
+                nombre,
+                apellido,
+                telefono: $('clienteTelefonoInput').value.trim(),
+                instagram: $('clienteInstagramInput').value.trim(),
+                fechaCumpleanos: $('clienteFechaCumpleInput').value
+            };
+
+            let saved = null;
+            if (clienteId) {
+                if (foto1) {
+                    body.foto1 = foto1;
+                }
+                if (foto2) {
+                    body.foto2 = foto2;
+                }
+
+                saved = await apiFetch(`/api/clientes/${clienteId}`, {
+                    method: 'PUT',
+                    body
+                });
+            } else {
+                if (!foto1 || !foto2) {
+                    throw new Error('Debes cargar las 2 fotos del cliente');
+                }
+
+                body.foto1 = foto1;
+                body.foto2 = foto2;
+
+                saved = await apiFetch('/api/clientes', {
+                    method: 'POST',
+                    body
+                });
             }
 
-            const saved = await apiFetch('/api/clientes', {
-                method: 'POST',
-                body: {
-                    nombre,
-                    apellido,
-                    telefono: $('clienteTelefonoInput').value.trim(),
-                    instagram: $('clienteInstagramInput').value.trim(),
-                    fechaCumpleanos: $('clienteFechaCumpleInput').value,
-                    foto1,
-                    foto2
-                }
-            });
-
-            $('clienteForm').reset();
-            clearClientePhotos();
+            resetClienteForm();
             if (saved?._id) {
                 state.selectedClienteId = saved._id;
             }
             await cargarClientes();
-            showMessage('Cliente guardado correctamente');
+            showMessage(clienteId ? 'Cliente actualizado correctamente' : 'Cliente guardado correctamente');
         } catch (error) {
             showMessage(error.message, 'error');
         }
+    });
+
+    $('cancelEditCliente').addEventListener('click', () => {
+        resetClienteForm();
     });
 
     $('turnosTableBody').addEventListener('click', async (event) => {
@@ -2293,7 +2471,8 @@ function setDefaultDates() {
     $('turnoHora').value = '10:00';
     $('turnosFiltroFecha').value = value;
     $('cajaFecha').value = value;
-    $('cumpleFecha').value = value;
+    setCurrentCumpleMonth(value.slice(0, 7));
+    state.selectedCumpleDate = null;
     $('reporteFechaDia').value = value;
     $('reporteSemanaDesde').value = monday;
     $('reporteSemanaHasta').value = value;
