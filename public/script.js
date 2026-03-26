@@ -368,7 +368,7 @@ function renderCajaServiciosSelect() {
 
     const options = state.serviciosCaja
         .map((servicio) => (
-            `<option value="${servicio._id}">${escapeHtml(servicio.nombre)}}</option>`
+            `<option value="${servicio._id}">${escapeHtml(servicio.nombre)}</option>`
         ))
         .join('');
 
