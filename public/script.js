@@ -2312,43 +2312,34 @@ function attachEvents() {
             const clienteId = $('clienteIdInput').value.trim();
             const nombre = $('clienteNombreInput').value.trim();
             const apellido = $('clienteApellidoInput').value.trim();
+            const foto1 = await getProcessedClientePhoto('1');
+            const foto2 = await getProcessedClientePhoto('2');
 
             if (!nombre || !apellido) {
                 throw new Error('Nombre y apellido son obligatorios');
             }
 
-            const foto1 = await getProcessedClientePhoto('1');
-            const foto2 = await getProcessedClientePhoto('2');
+            
 
             const body = {
                 nombre,
                 apellido,
                 telefono: $('clienteTelefonoInput').value.trim(),
                 instagram: $('clienteInstagramInput').value.trim(),
-                fechaCumpleanos: $('clienteFechaCumpleInput').value
+                fechaCumpleanos: $('clienteFechaCumpleInput').value,
+                foto1,
+                foto2
             };
 
             debugger;
             let saved = null;
             if (clienteId) {
-                if (foto1) {
-                    body.foto1 = foto1;
-                }
-                if (foto2) {
-                    body.foto2 = foto2;
-                }
 
                 saved = await apiFetch(`/api/clientes/${clienteId}`, {
                     method: 'PUT',
                     body
                 });
             } else {
-                if (!foto1 || !foto2) {
-                    throw new Error('Debes cargar las 2 fotos del cliente');
-                }
-
-                body.foto1 = foto1;
-                body.foto2 = foto2;
 
                 saved = await apiFetch('/api/clientes', {
                     method: 'POST',
