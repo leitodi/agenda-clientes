@@ -46,7 +46,7 @@ function normalizeOptionalBirthday(value) {
 }
 
 router.get('/', authRequired, async (req, res) => {
-    const clientes = await Client.find().sort({ nombreNormalizado: 1, nombre: 1 });
+    const clientes = await Client.find().sort({ nombreNormalizado: 1 });
     return res.json(clientes);
 });
 
