@@ -13,16 +13,10 @@
     <main class="container">
         <section class="brand-header card">
             <img src="imagenes/salon_milano.jpeg" alt="Salon Milano" class="brand-header-image">
-            <div class="brand-header-overlay"></div>
-            <div class="brand-header-copy">
-                <p class="brand-eyebrow">Barberia de lujo italiana</p>
-                <h1 class="brand-logo">MILANO</h1>
-                <p class="brand-subtitle">Agenda, clientes, caja y reportes con una presencia premium, sobria y profesional.</p>
-            </div>
         </section>
         <section id="loginView" class="card login-card">
             <p class="section-kicker">Acceso privado</p>
-            <h2>Salon Milano</h2>
+            <h2>Salón Milano</h2>
             <p>Ingresa con tu usuario para administrar turnos, clientes, caja y reportes.</p>
             <form id="loginForm" class="form-grid">
                 <label>
@@ -30,7 +24,7 @@
                     <input id="loginUsername" type="text" required autocomplete="username">
                 </label>
                 <label>
-                    Contrasena
+                    Contraseña
                     <input id="loginPassword" type="password" required autocomplete="current-password">
                 </label>
                 <button type="submit" class="btn primary">Ingresar</button>
@@ -40,11 +34,11 @@
         <section id="appView" class="hidden">
             <header class="topbar card">
                 <div class="topbar-copy">
-                    <p class="section-kicker">Salon Milano</p>
-                    <h2>Panel de gestion</h2>
+                    <p class="section-kicker">Salón Milano</p>
+                    <h2>Panel de gestión</h2>
                     <p id="sessionInfo"></p>
                 </div>
-                <button id="logoutBtn" class="btn danger" type="button">Cerrar sesion</button>
+                <button id="logoutBtn" class="btn danger" type="button">Cerrar sesión</button>
             </header>
 
             <div id="appMessage" class="message hidden">
@@ -114,7 +108,7 @@
                     <article id="turnoClienteInfo" class="cliente-turno-info hidden">
                         <h4>Cliente encontrado</h4>
                         <p><strong>Nombre:</strong> <span id="turnoClienteInfoNombre">-</span></p>
-                        <p><strong>Telefono:</strong> <span id="turnoClienteInfoTelefono">-</span></p>
+                        <p><strong>Teléfono:</strong> <span id="turnoClienteInfoTelefono">-</span></p>
                         <p><strong>Instagram:</strong> <span id="turnoClienteInfoInstagram">-</span></p>
                         <div class="cliente-turno-fotos">
                             <img id="turnoClienteInfoFoto1" class="cliente-turno-foto hidden" alt="Foto cliente 1">
@@ -202,7 +196,7 @@
                                 <input id="clienteApellidoInput" type="text" required>
                             </label>
                             <label>
-                                Telefono
+                                Teléfono
                                 <input id="clienteTelefonoInput" type="text" placeholder="351...">
                             </label>
                             <label>
@@ -238,7 +232,7 @@
 
                             <div class="inline-actions">
                                 <button id="clienteSubmitBtn" type="submit" class="btn primary">Guardar cliente</button>
-                                <button id="cancelEditCliente" type="button" class="btn hidden">Cancelar edicion</button>
+                                <button id="cancelEditCliente" type="button" class="btn hidden">Cancelar edición</button>
                             </div>
                         </form>
                     </aside>
@@ -254,7 +248,7 @@
                             <div id="clienteDetalleVacio" class="cliente-vacio">Selecciona un cliente para ver su detalle.</div>
                             <div id="clienteDetalle" class="hidden">
                                 <h4 id="clienteNombre"></h4>
-                                <p><strong>Telefono:</strong> <span id="clienteTelefono">-</span></p>
+                                <p><strong>Teléfono:</strong> <span id="clienteTelefono">-</span></p>
                                 <p><strong>Instagram:</strong> <span id="clienteInstagram">-</span></p>
                                 <p><strong>Cumpleaños:</strong> <span id="clienteFechaCumple">-</span></p>
                                 <p><strong>Ultima atencion:</strong> <span id="clienteUltimaAtencion">-</span></p>
@@ -289,7 +283,7 @@
                                 <th>Fecha</th>
                                 <th>Tipo</th>
                                 <th>Nombre</th>
-                                <th>Telefono</th>
+                                <th>Teléfono</th>
                                 <th>WhatsApp</th>
                             </tr>
                         </thead>
@@ -303,7 +297,7 @@
             </section>
 
             <section id="tab-peluqueros" class="tab-panel card hidden admin-only">
-                <h3>Gestion de Peluqueros</h3>
+                <h3>Gestión de Peluqueros</h3>
                 <form id="peluqueroForm" class="form-grid">
                     <input id="peluqueroId" type="hidden">
                     <label>
@@ -311,7 +305,7 @@
                         <input id="peluqueroNombre" type="text" required>
                     </label>
                     <label>
-                        Telefono
+                        Teléfono
                         <input id="peluqueroTelefono" type="text">
                     </label>
                     <label>
@@ -338,14 +332,14 @@
                         <legend>Dias de trabajo</legend>
                         <label class="day-option"><input type="checkbox" class="day-check" value="1" checked>Lunes</label>
                         <label class="day-option"><input type="checkbox" class="day-check" value="2" checked>Martes</label>
-                        <label class="day-option"><input type="checkbox" class="day-check" value="3" checked>Miercoles</label>
+                        <label class="day-option"><input type="checkbox" class="day-check" value="3" checked>Miércoles</label>
                         <label class="day-option"><input type="checkbox" class="day-check" value="4" checked>Jueves</label>
                         <label class="day-option"><input type="checkbox" class="day-check" value="5" checked>Viernes</label>
-                        <label class="day-option"><input type="checkbox" class="day-check" value="6" checked>Sabado</label>
+                        <label class="day-option"><input type="checkbox" class="day-check" value="6" checked>Sábado</label>
                     </fieldset>
                     <div class="inline-actions">
                         <button type="submit" class="btn primary">Guardar peluquero</button>
-                        <button id="cancelEditPeluquero" type="button" class="btn">Cancelar edicion</button>
+                        <button id="cancelEditPeluquero" type="button" class="btn">Cancelar edición</button>
                     </div>
                 </form>
 
@@ -354,7 +348,7 @@
                         <thead>
                             <tr>
                                 <th>Nombre</th>
-                                <th>Telefono</th>
+                                <th>Teléfono</th>
                                 <th>Cumpleaños</th>
                                 <th>Comision</th>
                                 <th>Horario</th>
@@ -385,7 +379,7 @@
                     </label>
                     <div class="inline-actions">
                         <button type="submit" class="btn primary">Guardar servicio</button>
-                        <button id="cancelEditServicio" type="button" class="btn">Cancelar edicion</button>
+                        <button id="cancelEditServicio" type="button" class="btn">Cancelar edición</button>
                     </div>
                 </form>
 
@@ -433,7 +427,7 @@
                         <select id="cajaServicio" required></select>
                     </label>
                     <label>
-                        Monto cobrado (automatico)
+                        Monto cobrado (automático)
                         <input id="cajaMonto" type="number" min="0" step="0.01" required readonly>
                     </label>
                     <button type="submit" class="btn primary">Registrar venta</button>
@@ -497,7 +491,7 @@
                         <input id="usuarioNombre" type="text" required>
                     </label>
                     <label>
-                        Contrasena
+                        Contraseña
                         <input id="usuarioPassword" type="password" required>
                     </label>
                     <label>
@@ -516,7 +510,7 @@
                         <thead>
                             <tr>
                                 <th>Usuario</th>
-                                <th>Contrasena</th>
+                                <th>Contraseña</th>
                                 <th>Rol</th>
                                 <th>Alta</th>
                                 <th>Acciones</th>
@@ -553,7 +547,7 @@
                     <input id="nuevoClienteTurnoApellido" type="text" required>
                 </label>
                 <label>
-                    Telefono
+                    Teléfono
                     <input id="nuevoClienteTurnoTelefono" type="text" placeholder="351...">
                 </label>
                 <label>

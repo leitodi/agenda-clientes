@@ -1,4 +1,4 @@
-const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 const MAX_IMAGE_DIMENSION = 1280;
 const TARGET_IMAGE_BYTES = 950 * 1024;
@@ -176,7 +176,7 @@ function validarRangoReportes(desde, hasta) {
 
     const diffDays = Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
     if (diffDays > 31) {
-        throw new Error('El rango maximo permitido es 1 mes (31 dias)');
+        throw new Error('El rango máximo permitido es 1 mes (31 días)');
     }
 }
 
@@ -1042,8 +1042,11 @@ function toWhatsAppNumber(rawPhone) {
 }
 
 function buildCumpleMessage(clienteNombre, fechaSeleccionada) {
-    const fechaTexto = formatDateLabel(fechaSeleccionada);
-    return `Hola ${String(clienteNombre || '').trim()}, el dia ${fechaTexto} es tu cumple tenes un corte de pelo gratis avisanos tu horario para reservar.`;
+    const nombre = String(clienteNombre || '').trim();
+    return `Hola ${nombre}!
+Hoy es tu cumpleaños, queremos desearte feliz cumpleaños y regalarte un corte gratis 🙌🏼. Escribinos para reservarte tu turno 📲
+¡Te esperamos!
+- Salón Milano 🪞`;
 }
 
 function toDateStringLocal(date) {
@@ -1243,7 +1246,7 @@ function renderCumpleanos() {
     }
 
     if (!selectedDate) {
-        resumen.textContent = `Cumpleanos de ${formatMonthYearLabel(monthData.year, monthData.month)}: ${cumpleaneros.length} persona(s) - ${cumpleanerosClientes.length} cliente(s), ${cumpleanerosPersonal.length} personal. Selecciona un dia verde para ver el detalle.`;
+        resumen.textContent = `Cumpleaños de ${formatMonthYearLabel(monthData.year, monthData.month)}: ${cumpleaneros.length} persona(s) - ${cumpleanerosClientes.length} cliente(s), ${cumpleanerosPersonal.length} personal. Selecciona un día verde para ver el detalle.`;
         body.innerHTML = '<tr><td colspan="5">Selecciona un dia con linea verde para ver los cumpleanos.</td></tr>';
         return;
     }
@@ -1256,7 +1259,7 @@ function renderCumpleanos() {
 
     const clientesDelDia = selectedEntries.filter((persona) => persona.tipo === 'Cliente').length;
     const personalDelDia = selectedEntries.filter((persona) => persona.tipo === 'Personal').length;
-    resumen.textContent = `Cumpleanos del ${formatDateLabel(selectedDate)}: ${selectedEntries.length} persona(s) - ${clientesDelDia} cliente(s), ${personalDelDia} personal.`;
+    resumen.textContent = `Cumpleaños del ${formatDateLabel(selectedDate)}: ${selectedEntries.length} persona(s) - ${clientesDelDia} cliente(s), ${personalDelDia} personal.`;
     body.innerHTML = selectedEntries.map((persona) => {
         const fullName = splitFullName(persona.nombreCompleto);
         const telefono = String(persona.telefono || '').trim();
