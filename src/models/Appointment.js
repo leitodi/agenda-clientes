@@ -17,7 +17,7 @@ const appointmentSchema = new mongoose.Schema(
         foto2: { type: String, default: '' },
         estado: { type: String, enum: ['pendiente', 'atendido', 'perdido'], default: 'pendiente' },
         estadoActualizadoEn: { type: Date, default: null },
-        peluquero: { type: mongoose.Schema.Types.ObjectId, ref: 'Barber', required: true },
+        peluquero: { type: mongoose.Schema.Types.ObjectId, ref: 'Barber', default: null },
         creadoPor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
     },
     {

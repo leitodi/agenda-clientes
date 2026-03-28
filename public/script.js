@@ -383,9 +383,10 @@ function completarSelectPeluqueros() {
         .filter((p) => p.activo)
         .map((p) => ({ id: p._id, nombre: p.nombre }));
 
-    const options = activos
+    const options = ['<option value="">Sin asignar</option>']
+        .concat(activos
         .map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`)
-        .join('');
+        ).join('');
 
     const turnoPeluqueroSelect = $('turnoPeluquero');
     if (turnoPeluqueroSelect) {
@@ -918,7 +919,7 @@ function toWhatsAppNumber(rawPhone) {
 
 function buildCumpleMessage(clienteNombre, fechaSeleccionada) {
     const fechaTexto = formatDateLabel(fechaSeleccionada);
-    return `Hola ${String(clienteNombre || '').trim()}, el dia ${fechaTexto} es tu cumple tenes un corte de pelo gratis avisanos tu horario para reservar suerte.`;
+    return `Hola ${String(clienteNombre || '').trim()}, el dia ${fechaTexto} es tu cumple tenes un corte de pelo gratis avisanos tu horario para reservar.`;
 }
 
 function toDateStringLocal(date) {
@@ -2284,7 +2285,7 @@ function attachEvents() {
             const payload = {
                 fecha: fechaTurno,
                 hora: horaTurno,
-                peluqueroId: $('turnoPeluquero').value,
+                peluqueroId: $('turnoPeluquero').value || null,
                 servicioId: servicioTurno,
                 cliente: clienteNombre,
                 clienteId: clienteCoincidente?._id || null,

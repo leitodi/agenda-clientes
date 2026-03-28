@@ -2,12 +2,17 @@ const express = require('express');
 const Attendance = require('../models/Attendance');
 const Barber = require('../models/Barber');
 const Service = require('../models/Service');
+const Client = require('../models/Client');
 const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 
 function isValidDateString(date) {
     return /^\d{4}-\d{2}-\d{2}$/.test(date);
+}
+
+function normalizeName(value) {
+    return String(value || '').trim().toLowerCase();
 }
 
 router.get('/', authRequired, async (req, res) => {
@@ -85,6 +90,21 @@ router.post('/', authRequired, async (req, res) => {
         peluquero: barber._id,
         registradoPor: req.user.id
     });
+
+    const clienteNombre = String(cliente || '').trim();
+    if (clienteNombre) {
+        const clienteNormalizado = normalizeName(clienteNombre);
+        const clienteExistente = await Client.findOne({ nombreNormalizado: clienteNormalizado });
+
+        if (clienteExistente) {
+            const fechaActual = String(clienteExistente.ultimaAtencion || '').trim();
+            if (!fechaActual || fecha >= fechaActual) {
+                clienteExistente.ultimaAtencion = fecha;
+                clienteExistente.ultimaAtencionPeluquero = String(barber.nombre || '').trim();
+                await clienteExistente.save();
+            }
+        }
+    }
 
     const populated = await Attendance.findById(atencion._id)
         .populate('peluquero', 'nombre porcentajeComision')

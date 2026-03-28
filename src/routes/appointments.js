@@ -117,10 +117,6 @@ async function resolverCliente({ clienteId, clienteNombre, foto1, foto2, fecha, 
         if (foto2) {
             cliente.foto2 = foto2;
         }
-        if (fecha) {
-            cliente.ultimaAtencion = fecha;
-            cliente.ultimaAtencionPeluquero = String(peluqueroNombre || '');
-        }
         await cliente.save();
 
         return {
@@ -148,10 +144,6 @@ async function resolverCliente({ clienteId, clienteNombre, foto1, foto2, fecha, 
         if (foto2) {
             clienteExistente.foto2 = foto2;
         }
-        if (fecha) {
-            clienteExistente.ultimaAtencion = fecha;
-            clienteExistente.ultimaAtencionPeluquero = String(peluqueroNombre || '');
-        }
         await clienteExistente.save();
 
         return {
@@ -164,9 +156,7 @@ async function resolverCliente({ clienteId, clienteNombre, foto1, foto2, fecha, 
         nombre,
         nombreNormalizado,
         foto1: String(foto1 || ''),
-        foto2: String(foto2 || ''),
-        ultimaAtencion: String(fecha || ''),
-        ultimaAtencionPeluquero: String(peluqueroNombre || '')
+        foto2: String(foto2 || '')
     });
 
     return {
@@ -191,13 +181,16 @@ router.get('/', authRequired, async (req, res) => {
 router.post('/', authRequired, async (req, res) => {
     const { fecha, hora, peluqueroId, cliente, clienteId, servicio, servicioId, foto1, foto2 } = req.body;
 
-    if (!isValidDateString(fecha) || !hora || !peluqueroId || (!servicio && !servicioId)) {
-        return res.status(400).json({ error: 'Fecha, hora, peluquero y servicio son requeridos' });
+    if (!isValidDateString(fecha) || !hora || (!servicio && !servicioId)) {
+        return res.status(400).json({ error: 'Fecha, hora y servicio son requeridos' });
     }
 
-    const barber = await Barber.findById(peluqueroId);
-    if (!barber) {
-        return res.status(404).json({ error: 'Peluquero no encontrado' });
+    let barber = null;
+    if (peluqueroId) {
+        barber = await Barber.findById(peluqueroId);
+        if (!barber) {
+            return res.status(404).json({ error: 'Peluquero no encontrado' });
+        }
     }
 
     try {
@@ -207,7 +200,7 @@ router.post('/', authRequired, async (req, res) => {
             foto1,
             foto2,
             fecha,
-            peluqueroNombre: barber.nombre
+            peluqueroNombre: barber?.nombre || ''
         });
 
         const servicioResuelto = await resolverServicioTurno({
@@ -219,14 +212,16 @@ router.post('/', authRequired, async (req, res) => {
         const finMinutos = inicioMinutos + duracionMinutos;
 
         validarHorarioGeneral(fecha, inicioMinutos, finMinutos);
-        validarDisponibilidadEnAgenda(barber, fecha, inicioMinutos, finMinutos);
+        if (barber) {
+            validarDisponibilidadEnAgenda(barber, fecha, inicioMinutos, finMinutos);
 
-        await validarSuperposicion({
-            peluqueroId,
-            fecha,
-            inicioMinutos,
-            finMinutos
-        });
+            await validarSuperposicion({
+                peluqueroId,
+                fecha,
+                inicioMinutos,
+                finMinutos
+            });
+        }
 
         const turno = await Appointment.create({
             fecha,
@@ -242,7 +237,7 @@ router.post('/', authRequired, async (req, res) => {
             clienteId: clienteResuelto.clienteId,
             foto1: String(foto1 || ''),
             foto2: String(foto2 || ''),
-            peluquero: peluqueroId,
+            peluquero: peluqueroId || null,
             creadoPor: req.user.id
         });
 
@@ -260,13 +255,16 @@ router.post('/', authRequired, async (req, res) => {
 router.put('/:id', authRequired, notAgendaRequired, async (req, res) => {
     const { fecha, hora, peluqueroId, cliente, clienteId, servicio, servicioId, foto1, foto2 } = req.body;
 
-    if (!isValidDateString(fecha) || !hora || !peluqueroId || (!servicio && !servicioId)) {
-        return res.status(400).json({ error: 'Fecha, hora, peluquero y servicio son requeridos' });
+    if (!isValidDateString(fecha) || !hora || (!servicio && !servicioId)) {
+        return res.status(400).json({ error: 'Fecha, hora y servicio son requeridos' });
     }
 
-    const barber = await Barber.findById(peluqueroId);
-    if (!barber) {
-        return res.status(404).json({ error: 'Peluquero no encontrado' });
+    let barber = null;
+    if (peluqueroId) {
+        barber = await Barber.findById(peluqueroId);
+        if (!barber) {
+            return res.status(404).json({ error: 'Peluquero no encontrado' });
+        }
     }
 
     const turnoActual = await Appointment.findById(req.params.id);
@@ -281,7 +279,7 @@ router.put('/:id', authRequired, notAgendaRequired, async (req, res) => {
             foto1,
             foto2,
             fecha,
-            peluqueroNombre: barber.nombre
+            peluqueroNombre: barber?.nombre || ''
         });
 
         const servicioResuelto = await resolverServicioTurno({
@@ -293,15 +291,17 @@ router.put('/:id', authRequired, notAgendaRequired, async (req, res) => {
         const finMinutos = inicioMinutos + duracionMinutos;
 
         validarHorarioGeneral(fecha, inicioMinutos, finMinutos);
-        validarDisponibilidadEnAgenda(barber, fecha, inicioMinutos, finMinutos);
+        if (barber) {
+            validarDisponibilidadEnAgenda(barber, fecha, inicioMinutos, finMinutos);
 
-        await validarSuperposicion({
-            peluqueroId,
-            fecha,
-            inicioMinutos,
-            finMinutos,
-            turnoIdExcluir: req.params.id
-        });
+            await validarSuperposicion({
+                peluqueroId,
+                fecha,
+                inicioMinutos,
+                finMinutos,
+                turnoIdExcluir: req.params.id
+            });
+        }
 
         turnoActual.fecha = fecha;
         turnoActual.horaInicio = hora;
@@ -316,7 +316,7 @@ router.put('/:id', authRequired, notAgendaRequired, async (req, res) => {
         turnoActual.clienteId = clienteResuelto.clienteId;
         turnoActual.foto1 = String(foto1 || '');
         turnoActual.foto2 = String(foto2 || '');
-        turnoActual.peluquero = peluqueroId;
+        turnoActual.peluquero = peluqueroId || null;
 
         await turnoActual.save();
 
