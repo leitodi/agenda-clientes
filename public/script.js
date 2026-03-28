@@ -751,6 +751,39 @@ function renderClienteDetalle() {
     }
 }
 
+function mergeClienteInState(clienteActualizado) {
+    const index = state.clientes.findIndex((item) => item._id === clienteActualizado._id);
+    if (index >= 0) {
+        state.clientes[index] = {
+            ...state.clientes[index],
+            ...clienteActualizado,
+            detalleCargado: true
+        };
+        return state.clientes[index];
+    }
+
+    const nuevoCliente = {
+        ...clienteActualizado,
+        detalleCargado: true
+    };
+    state.clientes.push(nuevoCliente);
+    return nuevoCliente;
+}
+
+async function ensureClienteDetalle(clienteId) {
+    const cliente = state.clientes.find((item) => item._id === clienteId);
+    if (!cliente) {
+        return null;
+    }
+
+    if (cliente.detalleCargado) {
+        return cliente;
+    }
+
+    const detalle = await apiFetch(`/api/clientes/${clienteId}`);
+    return mergeClienteInState(detalle);
+}
+
 function resetClienteForm() {
     $('clienteIdInput').value = '';
     $('clienteFormTitle').textContent = 'Nuevo cliente';
@@ -760,11 +793,20 @@ function resetClienteForm() {
     clearClientePhotos();
 }
 
-function fillClienteForm(clienteId) {
-    const cliente = state.clientes.find((item) => item._id === clienteId);
+async function fillClienteForm(clienteId) {
+    let cliente = state.clientes.find((item) => item._id === clienteId);
     if (!cliente) {
         showMessage('Selecciona un cliente valido para editar', 'error');
         return;
+    }
+
+    if (!cliente.detalleCargado) {
+        try {
+            cliente = await ensureClienteDetalle(clienteId);
+        } catch (error) {
+            showMessage(error.message, 'error');
+            return;
+        }
     }
 
     debugger;
@@ -1115,9 +1157,14 @@ function renderCumpleanos() {
     }).join('');
 }
 
-function selectCliente(clienteId) {
+async function selectCliente(clienteId) {
     state.selectedClienteId = clienteId;
     renderClientesList();
+    try {
+        await ensureClienteDetalle(clienteId);
+    } catch (error) {
+        showMessage(error.message, 'error');
+    }
     renderClienteDetalle();
 }
 
@@ -1199,6 +1246,17 @@ function syncTurnoClienteByInput() {
     state.selectedTurnoClienteId = cliente._id;
     $('turnoCliente').value = cliente.nombre;
     updateTurnoClienteInfo(cliente);
+    if (!cliente.detalleCargado) {
+        ensureClienteDetalle(cliente._id)
+            .then((detalle) => {
+                if (detalle && state.selectedTurnoClienteId === detalle._id) {
+                    updateTurnoClienteInfo(detalle);
+                }
+            })
+            .catch((error) => {
+                console.warn('No se pudo cargar el detalle del cliente:', error.message);
+            });
+    }
     return cliente;
 }
 
@@ -2300,13 +2358,13 @@ function attachEvents() {
         renderTurnosTable();
     });
 
-    $('editSelectedClienteBtn').addEventListener('click', () => {
+    $('editSelectedClienteBtn').addEventListener('click', async () => {
         if (!state.selectedClienteId) {
             showMessage('Selecciona un cliente para editar', 'error');
             return;
         }
 
-        fillClienteForm(state.selectedClienteId);
+        await fillClienteForm(state.selectedClienteId);
     });
 
     $('deleteSelectedClienteBtn').addEventListener('click', async () => {
@@ -2341,12 +2399,12 @@ function attachEvents() {
         renderClientesList();
     });
 
-    $('clientesList').addEventListener('click', (event) => {
+    $('clientesList').addEventListener('click', async (event) => {
         const item = event.target.closest('[data-action=\"select-cliente\"]');
         if (!item) {
             return;
         }
-        selectCliente(item.dataset.id);
+        await selectCliente(item.dataset.id);
     });
 
     $('turnoClienteInfoFoto1').addEventListener('click', () => {
