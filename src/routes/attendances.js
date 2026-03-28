@@ -1,11 +1,14 @@
 const express = require('express');
 const Attendance = require('../models/Attendance');
+const Appointment = require('../models/Appointment');
 const Barber = require('../models/Barber');
 const Service = require('../models/Service');
 const Client = require('../models/Client');
 const { authRequired } = require('../middleware/auth');
+const { parseTimeToMinutes } = require('../utils/time');
 
 const router = express.Router();
+const TURNO_CAJA_TOLERANCIA_MINUTOS = 120;
 
 function isValidDateString(date) {
     return /^\d{4}-\d{2}-\d{2}$/.test(date);
@@ -13,6 +16,77 @@ function isValidDateString(date) {
 
 function normalizeName(value) {
     return String(value || '').trim().toLowerCase();
+}
+
+function toUpperTrimmed(value) {
+    const text = String(value || '').trim();
+    return text ? text.toUpperCase() : '';
+}
+
+function isValidTimeString(value) {
+    return /^\d{2}:\d{2}$/.test(String(value || ''));
+}
+
+async function marcarTurnoAtendidoSiCorresponde({
+    fecha,
+    horaReferencia,
+    clienteNombre,
+    clienteId
+}) {
+    if (!isValidDateString(fecha) || !isValidTimeString(horaReferencia)) {
+        return null;
+    }
+
+    const clienteMayusculas = toUpperTrimmed(clienteNombre);
+    if (!clienteMayusculas && !clienteId) {
+        return null;
+    }
+
+    const horaMinutos = parseTimeToMinutes(horaReferencia);
+    const filtroClientes = [];
+
+    if (clienteId) {
+        filtroClientes.push({ clienteId });
+    }
+
+    if (clienteMayusculas) {
+        filtroClientes.push({ cliente: clienteMayusculas });
+    }
+
+    if (!filtroClientes.length) {
+        return null;
+    }
+
+    const candidatos = await Appointment.find({
+        fecha,
+        estado: 'pendiente',
+        $or: filtroClientes
+    }).sort({ inicioMinutos: 1, createdAt: 1 });
+
+    if (!candidatos.length) {
+        return null;
+    }
+
+    const candidatosEnHorario = candidatos.filter((turno) => (
+        horaMinutos >= Number(turno.inicioMinutos)
+        && horaMinutos < Number(turno.finMinutos)
+    ));
+
+    const candidatosConTolerancia = candidatos.filter((turno) => (
+        horaMinutos >= Number(turno.inicioMinutos)
+        && horaMinutos <= (Number(turno.finMinutos) + TURNO_CAJA_TOLERANCIA_MINUTOS)
+    ));
+
+    const turnoElegido = candidatosEnHorario[0] || candidatosConTolerancia[0] || null;
+    if (!turnoElegido) {
+        return null;
+    }
+
+    turnoElegido.estado = 'atendido';
+    turnoElegido.estadoActualizadoEn = new Date();
+    await turnoElegido.save();
+
+    return turnoElegido;
 }
 
 router.get('/', authRequired, async (req, res) => {
@@ -39,7 +113,15 @@ router.get('/', authRequired, async (req, res) => {
 });
 
 router.post('/', authRequired, async (req, res) => {
-    const { fecha, peluqueroId, cliente, formaPago, montoCobrado, servicioId } = req.body;
+    const {
+        fecha,
+        horaReferencia,
+        peluqueroId,
+        cliente,
+        formaPago,
+        montoCobrado,
+        servicioId
+    } = req.body;
 
     if (!isValidDateString(fecha) || !peluqueroId || (!servicioId && montoCobrado === undefined)) {
         return res.status(400).json({ error: 'Fecha, peluquero y servicio son requeridos' });
@@ -92,9 +174,10 @@ router.post('/', authRequired, async (req, res) => {
     });
 
     const clienteNombre = String(cliente || '').trim();
+    let clienteExistente = null;
     if (clienteNombre) {
         const clienteNormalizado = normalizeName(clienteNombre);
-        const clienteExistente = await Client.findOne({ nombreNormalizado: clienteNormalizado });
+        clienteExistente = await Client.findOne({ nombreNormalizado: clienteNormalizado });
 
         if (clienteExistente) {
             const fechaActual = String(clienteExistente.ultimaAtencion || '').trim();
@@ -106,11 +189,22 @@ router.post('/', authRequired, async (req, res) => {
         }
     }
 
+    const turnoAtendido = await marcarTurnoAtendidoSiCorresponde({
+        fecha,
+        horaReferencia,
+        clienteNombre,
+        clienteId: clienteExistente?._id || null
+    });
+
     const populated = await Attendance.findById(atencion._id)
         .populate('peluquero', 'nombre porcentajeComision')
         .populate('servicioId', 'nombre precio');
 
-    return res.status(201).json(populated);
+    return res.status(201).json({
+        ...populated.toObject(),
+        turnoMarcadoAtendido: Boolean(turnoAtendido),
+        turnoActualizadoId: turnoAtendido?._id || null
+    });
 });
 
 module.exports = router;

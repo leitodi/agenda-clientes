@@ -27,7 +27,8 @@ const state = {
     pendingTurnoPayload: null,
     pendingTurnoClienteNombre: '',
     atenciones: [],
-    usuarios: []
+    usuarios: [],
+    loadedTabs: {}
 };
 
 let turnosAhoraIntervalId = null;
@@ -76,6 +77,11 @@ function normalizeDigits(value) {
 function getCurrentMinutesLocal() {
     const now = new Date();
     return (now.getHours() * 60) + now.getMinutes();
+}
+
+function getCurrentClockLocal() {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
 function getTurnoEstado(turno) {
@@ -426,6 +432,66 @@ function setTab(tabName) {
         const isRestrictedForAgenda = isAgendaRole() && panel.classList.contains('restricted-agenda');
         panel.classList.toggle('hidden', panel.id !== `tab-${tabName}` || isRestrictedForAgenda);
     });
+}
+
+async function ensureTabData(tabName, force = false) {
+    if (!force && state.loadedTabs[tabName]) {
+        return;
+    }
+
+    if (tabName === 'dashboard') {
+        await cargarDashboard();
+    } else if (tabName === 'turnos') {
+        await Promise.all([
+            cargarServiciosCaja(),
+            cargarPeluqueros(),
+            cargarClientes(),
+            cargarTurnos(),
+            cargarTurnosDelMomento({ silent: true })
+        ]);
+    } else if (tabName === 'clientes') {
+        await cargarClientes();
+    } else if (tabName === 'cumpleanos') {
+        await Promise.all([
+            cargarClientes(),
+            cargarPeluqueros()
+        ]);
+    } else if (tabName === 'peluqueros') {
+        await cargarPeluqueros();
+    } else if (tabName === 'servicios') {
+        await cargarServiciosCaja();
+    } else if (tabName === 'caja') {
+        await Promise.all([
+            cargarServiciosCaja(),
+            cargarPeluqueros(),
+            cargarClientes(),
+            cargarAtenciones()
+        ]);
+    } else if (tabName === 'reportes') {
+        await Promise.all([
+            cargarPeluqueros(),
+            cargarReporteDia()
+        ]);
+    } else if (tabName === 'usuarios') {
+        await cargarUsuarios();
+    }
+
+    state.loadedTabs[tabName] = true;
+}
+
+async function activateTab(tabName, options = {}) {
+    const { force = false } = options;
+    setTab(tabName);
+
+    if (tabName === 'turnos') {
+        startTurnosAhoraWatcher();
+    } else {
+        stopTurnosAhoraWatcher();
+        state.turnosDelMomento = [];
+        renderTurnosAhoraPanel();
+    }
+
+    await ensureTabData(tabName, force);
 }
 
 function scheduleToText(agenda) {
@@ -2080,41 +2146,8 @@ async function cargarUsuarios() {
 }
 
 async function cargarTodoInicial() {
-    const errores = [];
-
-    async function intentarCarga(label, loader) {
-        try {
-            await loader();
-        } catch (error) {
-            console.error(`Error cargando ${label}:`, error);
-            errores.push(label);
-        }
-    }
-
-    await Promise.all([
-        intentarCarga('configuracion', cargarConfig),
-        intentarCarga('servicios', cargarServiciosCaja),
-        intentarCarga('peluqueros', cargarPeluqueros),
-        intentarCarga('clientes', cargarClientes),
-        intentarCarga('turnos', cargarTurnos),
-        intentarCarga('turnos del momento', () => cargarTurnosDelMomento({ silent: true }))
-    ]);
-
-    if (!isAgendaRole()) {
-        await Promise.all([
-            intentarCarga('dashboard', cargarDashboard),
-            intentarCarga('usuarios', cargarUsuarios),
-            intentarCarga('reportes', cargarReporteDia)
-        ]);
-    }
-
-    if (errores.length) {
-        const resumen = errores.slice(0, 3).join(', ');
-        const sufijo = errores.length > 3 ? ', ...' : '';
-        showMessage(`La app cargo de forma parcial. Fallaron: ${resumen}${sufijo}.`, 'error');
-    }
-
-    return errores;
+    state.loadedTabs = {};
+    await cargarConfig();
 }
 
 function showApp() {
@@ -2151,7 +2184,7 @@ async function restoreSession() {
 
         showApp();
         await cargarTodoInicial();
-        startTurnosAhoraWatcher();
+        await activateTab(isAgendaRole() ? 'turnos' : 'dashboard');
     } catch (error) {
         localStorage.removeItem('agendaToken');
         localStorage.removeItem('agendaUser');
@@ -2251,11 +2284,9 @@ function attachEvents() {
 
             $('loginForm').reset();
             showApp();
-            const erroresCarga = await cargarTodoInicial();
-            startTurnosAhoraWatcher();
-            if (!erroresCarga.length) {
-                showMessage('Sesion iniciada correctamente');
-            }
+            await cargarTodoInicial();
+            await activateTab(isAgendaRole() ? 'turnos' : 'dashboard');
+            showMessage('Sesion iniciada correctamente');
         } catch (error) {
             showMessage(error.message, 'error');
         }
@@ -2280,11 +2311,15 @@ function attachEvents() {
     });
 
     document.querySelectorAll('.tab-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             if (btn.classList.contains('hidden')) {
                 return;
             }
-            setTab(btn.dataset.tab);
+            try {
+                await activateTab(btn.dataset.tab);
+            } catch (error) {
+                showMessage(error.message, 'error');
+            }
         });
     });
 
@@ -2750,10 +2785,11 @@ function attachEvents() {
                 throw new Error('Debes seleccionar un servicio');
             }
 
-            await apiFetch('/api/atenciones', {
+            const atencion = await apiFetch('/api/atenciones', {
                 method: 'POST',
                 body: {
                     fecha: $('cajaFecha').value,
+                    horaReferencia: getCurrentClockLocal(),
                     peluqueroId: $('cajaPeluquero').value,
                     cliente: $('cajaCliente').value.trim(),
                     formaPago: $('cajaFormaPago').value,
@@ -2764,7 +2800,7 @@ function attachEvents() {
             $('cajaCliente').value = '';
             $('cajaFormaPago').value = 'efectivo';
             renderCajaServiciosSelect();
-            showMessage('Venta registrada en caja');
+            showMessage(atencion?.turnoMarcadoAtendido ? 'Venta registrada en caja y turno marcado como atendido' : 'Venta registrada en caja');
         } catch (error) {
             showMessage(error.message, 'error');
         }

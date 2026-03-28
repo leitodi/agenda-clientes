@@ -3,17 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion de Peluqueria</title>
+    <title>Salon Milano</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <main class="container">
         <section class="brand-header card">
             <img src="imagenes/salon_milano.jpeg" alt="Salon Milano" class="brand-header-image">
+            <div class="brand-header-overlay"></div>
+            <div class="brand-header-copy">
+                <p class="brand-eyebrow">Barberia de lujo italiana</p>
+                <h1 class="brand-logo">MILANO</h1>
+                <p class="brand-subtitle">Agenda, clientes, caja y reportes con una presencia premium, sobria y profesional.</p>
+            </div>
         </section>
         <section id="loginView" class="card login-card">
-            <h1>Agenda de Peluqueria</h1>
-            <p>Ingresa con tu usuario para administrar turnos, caja y reportes.</p>
+            <p class="section-kicker">Acceso privado</p>
+            <h2>Salon Milano</h2>
+            <p>Ingresa con tu usuario para administrar turnos, clientes, caja y reportes.</p>
             <form id="loginForm" class="form-grid">
                 <label>
                     Usuario
@@ -29,8 +39,9 @@
 
         <section id="appView" class="hidden">
             <header class="topbar card">
-                <div>
-                    <h2>Panel de Gestion</h2>
+                <div class="topbar-copy">
+                    <p class="section-kicker">Salon Milano</p>
+                    <h2>Panel de gestion</h2>
                     <p id="sessionInfo"></p>
                 </div>
                 <button id="logoutBtn" class="btn danger" type="button">Cerrar sesion</button>
@@ -325,13 +336,12 @@
                     </label>
                     <fieldset class="days-fieldset">
                         <legend>Dias de trabajo</legend>
-                        <label><input type="checkbox" class="day-check" value="1" checked>Lunes</label>
-                        <label><input type="checkbox" class="day-check" value="2" checked>Martes</label>
-                        <label><input type="checkbox" class="day-check" value="3" checked>Miercoles</label>
-                        <label><input type="checkbox" class="day-check" value="4" checked>Jueves</label>
-                        <label><input type="checkbox" class="day-check" value="5" checked>Viernes</label>
-                        <label><input type="checkbox" class="day-check" value="6" checked>Sabado</label>
-                        <label><input type="checkbox" class="day-check" value="0">Domingo</label>
+                        <label class="day-option"><input type="checkbox" class="day-check" value="1" checked>Lunes</label>
+                        <label class="day-option"><input type="checkbox" class="day-check" value="2" checked>Martes</label>
+                        <label class="day-option"><input type="checkbox" class="day-check" value="3" checked>Miercoles</label>
+                        <label class="day-option"><input type="checkbox" class="day-check" value="4" checked>Jueves</label>
+                        <label class="day-option"><input type="checkbox" class="day-check" value="5" checked>Viernes</label>
+                        <label class="day-option"><input type="checkbox" class="day-check" value="6" checked>Sabado</label>
                     </fieldset>
                     <div class="inline-actions">
                         <button type="submit" class="btn primary">Guardar peluquero</button>
