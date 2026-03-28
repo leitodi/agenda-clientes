@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const Client = require('../models/Client');
 const Appointment = require('../models/Appointment');
+const Attendance = require('../models/Attendance');
 const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
@@ -45,11 +46,88 @@ function normalizeOptionalBirthday(value) {
     return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
 }
 
+async function getLatestAttendanceByClient(normalizedNames) {
+    const validNames = Array.from(new Set(
+        (normalizedNames || [])
+            .map((item) => String(item || '').trim().toLowerCase())
+            .filter(Boolean)
+    ));
+
+    if (!validNames.length) {
+        return new Map();
+    }
+
+    const rows = await Attendance.aggregate([
+        {
+            $match: {
+                cliente: { $exists: true, $ne: '' }
+            }
+        },
+        {
+            $addFields: {
+                clienteNormalizado: {
+                    $toLower: {
+                        $trim: { input: '$cliente' }
+                    }
+                }
+            }
+        },
+        {
+            $match: {
+                clienteNormalizado: { $in: validNames }
+            }
+        },
+        {
+            $sort: { fecha: -1, createdAt: -1 }
+        },
+        {
+            $group: {
+                _id: '$clienteNormalizado',
+                fecha: { $first: '$fecha' },
+                peluqueroId: { $first: '$peluquero' }
+            }
+        }
+    ]);
+
+    const peluqueroIds = rows
+        .map((row) => String(row.peluqueroId || '').trim())
+        .filter(Boolean);
+
+    const peluqueros = peluqueroIds.length
+        ? await mongoose.model('Barber').find({ _id: { $in: peluqueroIds } }).select('nombre')
+        : [];
+
+    const peluquerosById = new Map(peluqueros.map((item) => [String(item._id), item.nombre]));
+
+    return new Map(rows.map((row) => [
+        row._id,
+        {
+            ultimaAtencion: String(row.fecha || ''),
+            ultimaAtencionPeluquero: peluquerosById.get(String(row.peluqueroId || '')) || ''
+        }
+    ]));
+}
+
 router.get('/', authRequired, async (req, res) => {
     const clientes = await Client.find()
         .select('-foto1 -foto2')
         .sort({ nombreNormalizado: 1 });
-    return res.json(clientes);
+    const latestAttendanceByClient = await getLatestAttendanceByClient(clientes.map((item) => item.nombreNormalizado));
+
+    const response = clientes.map((cliente) => {
+        const latestAttendance = latestAttendanceByClient.get(cliente.nombreNormalizado);
+        if (!latestAttendance) {
+            return cliente;
+        }
+
+        return {
+            ...cliente.toObject(),
+            ultimaAtencion: latestAttendance.ultimaAtencion,
+            ultimaAtencionPeluquero: latestAttendance.ultimaAtencionPeluquero
+        };
+    });
+
+    return res.json(response);
 });
 
 router.post('/', authRequired, async (req, res) => {
@@ -111,7 +189,18 @@ router.get('/:id', authRequired, async (req, res) => {
         return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    return res.json(cliente);
+    const latestAttendanceByClient = await getLatestAttendanceByClient([cliente.nombreNormalizado]);
+    const latestAttendance = latestAttendanceByClient.get(cliente.nombreNormalizado);
+
+    if (!latestAttendance) {
+        return res.json(cliente);
+    }
+
+    return res.json({
+        ...cliente.toObject(),
+        ultimaAtencion: latestAttendance.ultimaAtencion,
+        ultimaAtencionPeluquero: latestAttendance.ultimaAtencionPeluquero
+    });
 });
 
 router.put('/:id', authRequired, async (req, res) => {

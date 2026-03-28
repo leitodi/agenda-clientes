@@ -25,6 +25,7 @@ const state = {
     selectedCumpleDate: null,
     currentCumpleMonth: null,
     pendingTurnoPayload: null,
+    pendingTurnoClienteNombre: '',
     atenciones: [],
     usuarios: []
 };
@@ -1263,6 +1264,7 @@ function syncTurnoClienteByInput() {
 
 function openNuevoClienteTurnoModal(nombreCompleto) {
     const modal = $('nuevoClienteTurnoModal');
+    state.pendingTurnoClienteNombre = String(nombreCompleto || '').trim();
     const parsed = splitFullName(nombreCompleto);
     $('nuevoClienteTurnoNombre').value = parsed.nombre;
     $('nuevoClienteTurnoApellido').value = parsed.apellido;
@@ -1274,6 +1276,29 @@ function openNuevoClienteTurnoModal(nombreCompleto) {
 
 function closeNuevoClienteTurnoModal() {
     $('nuevoClienteTurnoModal').classList.add('hidden');
+    state.pendingTurnoClienteNombre = '';
+}
+
+function maybeOpenNuevoClienteTurnoModal() {
+    const clienteNombre = $('turnoCliente').value.trim();
+    if (!clienteNombre) {
+        return;
+    }
+
+    if (findClienteByNombre(clienteNombre)) {
+        return;
+    }
+
+    if (!$('nuevoClienteTurnoModal').classList.contains('hidden')) {
+        return;
+    }
+
+    if (state.pendingTurnoClienteNombre === clienteNombre) {
+        return;
+    }
+
+    openNuevoClienteTurnoModal(clienteNombre);
+    showMessage('Cliente no encontrado. Completa el popup para crearlo.', 'error');
 }
 
 function openEditarUsuarioModal(user) {
@@ -2243,6 +2268,7 @@ function attachEvents() {
 
     $('turnoCliente').addEventListener('blur', () => {
         syncTurnoClienteByInput();
+        maybeOpenNuevoClienteTurnoModal();
     });
 
     $('cancelNuevoClienteTurno').addEventListener('click', () => {
