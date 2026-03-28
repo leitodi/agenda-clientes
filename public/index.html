@@ -41,6 +41,13 @@
                 <button id="appMessageOk" class="btn" type="button">OK</button>
             </div>
 
+            <div id="appLoading" class="loading-overlay hidden" aria-live="polite" aria-busy="true">
+                <div class="loading-card">
+                    <div class="loading-spinner"></div>
+                    <p id="appLoadingText">Cargando...</p>
+                </div>
+            </div>
+
             <nav class="tabs card">
                 <button class="tab-btn active restricted-agenda" data-tab="dashboard">Dashboard</button>
                 <button class="tab-btn" data-tab="turnos">Agenda de Turnos</button>

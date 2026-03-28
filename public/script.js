@@ -31,6 +31,8 @@ const state = {
 };
 
 let turnosAhoraIntervalId = null;
+let loadingRequests = 0;
+let loadingTimerId = null;
 const turnosAlertados = new Set();
 
 const $ = (id) => document.getElementById(id);
@@ -259,12 +261,51 @@ function hideMessage() {
     box.classList.add('hidden');
 }
 
+function showLoading(text = 'Cargando...') {
+    const overlay = $('appLoading');
+    const label = $('appLoadingText');
+
+    loadingRequests += 1;
+    if (label) {
+        label.textContent = text;
+    }
+
+    if (loadingRequests > 1 || loadingTimerId) {
+        return;
+    }
+
+    loadingTimerId = window.setTimeout(() => {
+        if (loadingRequests > 0) {
+            overlay.classList.remove('hidden');
+        }
+        loadingTimerId = null;
+    }, 150);
+}
+
+function hideLoading() {
+    const overlay = $('appLoading');
+    loadingRequests = Math.max(0, loadingRequests - 1);
+
+    if (loadingRequests > 0) {
+        return;
+    }
+
+    if (loadingTimerId) {
+        clearTimeout(loadingTimerId);
+        loadingTimerId = null;
+    }
+
+    overlay.classList.add('hidden');
+}
+
 async function apiFetch(url, options = {}) {
     const {
         auth = true,
         method = 'GET',
         body,
-        headers = {}
+        headers = {},
+        showLoading: shouldShowLoading = true,
+        loadingText = 'Cargando...'
     } = options;
 
     const requestHeaders = {
@@ -279,24 +320,34 @@ async function apiFetch(url, options = {}) {
         requestHeaders.Authorization = `Bearer ${state.token}`;
     }
 
-    const response = await fetch(url, {
-        method,
-        headers: requestHeaders,
-        body: body !== undefined ? JSON.stringify(body) : undefined
-    });
+    if (shouldShowLoading) {
+        showLoading(loadingText);
+    }
 
-    let payload = null;
     try {
-        payload = await response.json();
-    } catch (error) {
-        payload = null;
-    }
+        const response = await fetch(url, {
+            method,
+            headers: requestHeaders,
+            body: body !== undefined ? JSON.stringify(body) : undefined
+        });
 
-    if (!response.ok) {
-        throw new Error(payload?.error || 'Error en la solicitud');
-    }
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (error) {
+            payload = null;
+        }
 
-    return payload;
+        if (!response.ok) {
+            throw new Error(payload?.error || 'Error en la solicitud');
+        }
+
+        return payload;
+    } finally {
+        if (shouldShowLoading) {
+            hideLoading();
+        }
+    }
 }
 
 async function downloadFile(url, fallbackName) {
@@ -305,31 +356,37 @@ async function downloadFile(url, fallbackName) {
         headers.Authorization = `Bearer ${state.token}`;
     }
 
-    const response = await fetch(url, { headers });
+    showLoading('Preparando descarga...');
 
-    if (!response.ok) {
-        let payload = null;
-        try {
-            payload = await response.json();
-        } catch (error) {
-            payload = null;
+    try {
+        const response = await fetch(url, { headers });
+
+        if (!response.ok) {
+            let payload = null;
+            try {
+                payload = await response.json();
+            } catch (error) {
+                payload = null;
+            }
+            throw new Error(payload?.error || 'No se pudo descargar el archivo');
         }
-        throw new Error(payload?.error || 'No se pudo descargar el archivo');
+
+        const blob = await response.blob();
+        const disposition = response.headers.get('content-disposition') || '';
+        const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+        const fileName = match?.[1] || fallbackName;
+
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+    } finally {
+        hideLoading();
     }
-
-    const blob = await response.blob();
-    const disposition = response.headers.get('content-disposition') || '';
-    const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
-    const fileName = match?.[1] || fallbackName;
-
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(blobUrl);
 }
 
 function applyRoleVisibility() {
@@ -1869,7 +1926,7 @@ async function cargarTurnosDelMomento(options = {}) {
     }
 
     const fechaActual = getLocalDateString();
-    const turnosHoy = await apiFetch(`/api/turnos?fecha=${fechaActual}`);
+    const turnosHoy = await apiFetch(`/api/turnos?fecha=${fechaActual}`, { showLoading: false });
     const turnosEnHorario = turnosHoy.filter((turno) => isTurnoDelMomento(turno, fechaActual, getCurrentMinutesLocal()));
 
     state.turnosDelMomento = turnosEnHorario;

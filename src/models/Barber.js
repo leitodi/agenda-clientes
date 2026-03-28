@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+function toUpperTrimmed(value) {
+    const text = String(value || '').trim();
+    return text ? text.toUpperCase() : '';
+}
+
 const scheduleSchema = new mongoose.Schema(
     {
         dayOfWeek: { type: Number, min: 0, max: 6, required: true },
@@ -11,7 +16,7 @@ const scheduleSchema = new mongoose.Schema(
 
 const barberSchema = new mongoose.Schema(
     {
-        nombre: { type: String, required: true, trim: true },
+        nombre: { type: String, required: true, trim: true, set: toUpperTrimmed },
         telefono: { type: String, default: '', trim: true },
         fechaCumpleanos: { type: String, default: '' },
         porcentajeComision: { type: Number, required: true, min: 0, max: 100 },

@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+function toUpperTrimmed(value) {
+    const text = String(value || '').trim();
+    return text ? text.toUpperCase() : '';
+}
+
 const appointmentSchema = new mongoose.Schema(
     {
         fecha: { type: String, required: true },
@@ -9,9 +14,9 @@ const appointmentSchema = new mongoose.Schema(
         finMinutos: { type: Number, required: true },
         servicio: { type: String, required: true },
         servicioId: { type: mongoose.Schema.Types.ObjectId, ref: 'Service', default: null },
-        servicioNombre: { type: String, default: '', trim: true },
+        servicioNombre: { type: String, default: '', trim: true, set: toUpperTrimmed },
         duracionMinutos: { type: Number, required: true },
-        cliente: { type: String, default: '', trim: true },
+        cliente: { type: String, default: '', trim: true, set: toUpperTrimmed },
         clienteId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', default: null },
         foto1: { type: String, default: '' },
         foto2: { type: String, default: '' },

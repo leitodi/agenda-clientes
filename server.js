@@ -15,6 +15,10 @@ const dashboardRoutes = require('./src/routes/dashboard');
 const clientRoutes = require('./src/routes/clients');
 const serviceRoutes = require('./src/routes/services');
 const Client = require('./src/models/Client');
+const Barber = require('./src/models/Barber');
+const Service = require('./src/models/Service');
+const Appointment = require('./src/models/Appointment');
+const Attendance = require('./src/models/Attendance');
 const { ensureSeedData } = require('./src/utils/seed');
 const { SERVICE_TYPES } = require('./src/utils/services');
 
@@ -100,6 +104,54 @@ async function ensureClientIndexes() {
     }
 }
 
+function toUpperTrimmed(value) {
+    const text = String(value || '').trim();
+    return text ? text.toUpperCase() : '';
+}
+
+async function migrateUppercaseField(model, field, label) {
+    try {
+        const docs = await model.find({
+            [field]: { $exists: true, $ne: '' }
+        }).select(`_id ${field}`);
+
+        const operations = docs
+            .map((doc) => {
+                const currentValue = String(doc[field] || '');
+                const upperValue = toUpperTrimmed(currentValue);
+                if (!upperValue || upperValue === currentValue) {
+                    return null;
+                }
+
+                return {
+                    updateOne: {
+                        filter: { _id: doc._id },
+                        update: { $set: { [field]: upperValue } }
+                    }
+                };
+            })
+            .filter(Boolean);
+
+        if (operations.length) {
+            await model.bulkWrite(operations);
+            console.log(`${label} actualizados en mayusculas: ${operations.length}`);
+        }
+    } catch (error) {
+        console.warn(`No se pudieron normalizar ${label}:`, error.message);
+    }
+}
+
+async function ensureUppercaseData() {
+    await migrateUppercaseField(Client, 'nombre', 'clientes.nombre');
+    await migrateUppercaseField(Client, 'ultimaAtencionPeluquero', 'clientes.ultimaAtencionPeluquero');
+    await migrateUppercaseField(Barber, 'nombre', 'peluqueros.nombre');
+    await migrateUppercaseField(Service, 'nombre', 'servicios.nombre');
+    await migrateUppercaseField(Appointment, 'cliente', 'turnos.cliente');
+    await migrateUppercaseField(Appointment, 'servicioNombre', 'turnos.servicioNombre');
+    await migrateUppercaseField(Attendance, 'cliente', 'atenciones.cliente');
+    await migrateUppercaseField(Attendance, 'servicioNombre', 'atenciones.servicioNombre');
+}
+
 async function startServer() {
     try {
         await mongoose.connect(MONGODB_URI);
@@ -107,6 +159,7 @@ async function startServer() {
 
         await ensureClientIndexes();
         await ensureSeedData();
+        await ensureUppercaseData();
 
         app.listen(PORT, () => {
             console.log(`Servidor listo en http://localhost:${PORT}`);
