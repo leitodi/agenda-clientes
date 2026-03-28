@@ -2,6 +2,7 @@ const express = require('express');
 const Appointment = require('../models/Appointment');
 const Barber = require('../models/Barber');
 const Client = require('../models/Client');
+const Service = require('../models/Service');
 const { authRequired, notAgendaRequired } = require('../middleware/auth');
 const { parseTimeToMinutes, minutesToTime, getDayOfWeek, getDayName } = require('../utils/time');
 const { getServiceDuration } = require('../utils/services');
@@ -66,6 +67,41 @@ function normalizarNombreCliente(value) {
 
 function normalizarEstadoTurno(value) {
     return String(value || '').trim().toLowerCase();
+}
+
+async function resolverServicioTurno({ servicioId, servicioLegacy }) {
+    const servicioIdFinal = String(servicioId || servicioLegacy || '').trim();
+
+    if (/^[a-fA-F0-9]{24}$/.test(servicioIdFinal)) {
+        const servicio = await Service.findById(servicioIdFinal);
+        if (!servicio) {
+            throw new Error('Servicio no encontrado');
+        }
+
+        const duracionMinutos = Number(servicio.duracionMinutos || 30);
+        if (!Number.isInteger(duracionMinutos) || duracionMinutos <= 0) {
+            throw new Error('El servicio seleccionado no tiene una duracion valida');
+        }
+
+        return {
+            servicio: servicio._id.toString(),
+            servicioId: servicio._id,
+            servicioNombre: servicio.nombre,
+            duracionMinutos
+        };
+    }
+
+    const legacyKey = String(servicioLegacy || '').trim();
+    if (!legacyKey) {
+        throw new Error('Servicio invalido');
+    }
+
+    return {
+        servicio: legacyKey,
+        servicioId: null,
+        servicioNombre: '',
+        duracionMinutos: getServiceDuration(legacyKey)
+    };
 }
 
 async function resolverCliente({ clienteId, clienteNombre, foto1, foto2, fecha, peluqueroNombre }) {
@@ -146,15 +182,16 @@ router.get('/', authRequired, async (req, res) => {
     const turnos = await Appointment.find(filter)
         .populate('peluquero', 'nombre telefono porcentajeComision agenda activo')
         .populate('clienteId', 'nombre telefono instagram fechaCumpleanos foto1 foto2 ultimaAtencion ultimaAtencionPeluquero')
+        .populate('servicioId', 'nombre precio duracionMinutos')
         .sort({ fecha: 1, inicioMinutos: 1 });
 
     return res.json(turnos);
 });
 
 router.post('/', authRequired, async (req, res) => {
-    const { fecha, hora, peluqueroId, cliente, clienteId, servicio, foto1, foto2 } = req.body;
+    const { fecha, hora, peluqueroId, cliente, clienteId, servicio, servicioId, foto1, foto2 } = req.body;
 
-    if (!isValidDateString(fecha) || !hora || !peluqueroId || !servicio) {
+    if (!isValidDateString(fecha) || !hora || !peluqueroId || (!servicio && !servicioId)) {
         return res.status(400).json({ error: 'Fecha, hora, peluquero y servicio son requeridos' });
     }
 
@@ -173,7 +210,11 @@ router.post('/', authRequired, async (req, res) => {
             peluqueroNombre: barber.nombre
         });
 
-        const duracionMinutos = getServiceDuration(servicio);
+        const servicioResuelto = await resolverServicioTurno({
+            servicioId,
+            servicioLegacy: servicio
+        });
+        const duracionMinutos = servicioResuelto.duracionMinutos;
         const inicioMinutos = parseTimeToMinutes(hora);
         const finMinutos = inicioMinutos + duracionMinutos;
 
@@ -193,7 +234,9 @@ router.post('/', authRequired, async (req, res) => {
             horaFin: minutesToTime(finMinutos),
             inicioMinutos,
             finMinutos,
-            servicio,
+            servicio: servicioResuelto.servicio,
+            servicioId: servicioResuelto.servicioId,
+            servicioNombre: servicioResuelto.servicioNombre,
             duracionMinutos,
             cliente: clienteResuelto.clienteNombreFinal,
             clienteId: clienteResuelto.clienteId,
@@ -205,7 +248,8 @@ router.post('/', authRequired, async (req, res) => {
 
         const turnoPopulado = await Appointment.findById(turno._id)
             .populate('peluquero', 'nombre telefono porcentajeComision agenda activo')
-            .populate('clienteId', 'nombre telefono instagram fechaCumpleanos foto1 foto2 ultimaAtencion ultimaAtencionPeluquero');
+            .populate('clienteId', 'nombre telefono instagram fechaCumpleanos foto1 foto2 ultimaAtencion ultimaAtencionPeluquero')
+            .populate('servicioId', 'nombre precio duracionMinutos');
 
         return res.status(201).json(turnoPopulado);
     } catch (error) {
@@ -214,9 +258,9 @@ router.post('/', authRequired, async (req, res) => {
 });
 
 router.put('/:id', authRequired, notAgendaRequired, async (req, res) => {
-    const { fecha, hora, peluqueroId, cliente, clienteId, servicio, foto1, foto2 } = req.body;
+    const { fecha, hora, peluqueroId, cliente, clienteId, servicio, servicioId, foto1, foto2 } = req.body;
 
-    if (!isValidDateString(fecha) || !hora || !peluqueroId || !servicio) {
+    if (!isValidDateString(fecha) || !hora || !peluqueroId || (!servicio && !servicioId)) {
         return res.status(400).json({ error: 'Fecha, hora, peluquero y servicio son requeridos' });
     }
 
@@ -240,7 +284,11 @@ router.put('/:id', authRequired, notAgendaRequired, async (req, res) => {
             peluqueroNombre: barber.nombre
         });
 
-        const duracionMinutos = getServiceDuration(servicio);
+        const servicioResuelto = await resolverServicioTurno({
+            servicioId,
+            servicioLegacy: servicio
+        });
+        const duracionMinutos = servicioResuelto.duracionMinutos;
         const inicioMinutos = parseTimeToMinutes(hora);
         const finMinutos = inicioMinutos + duracionMinutos;
 
@@ -260,7 +308,9 @@ router.put('/:id', authRequired, notAgendaRequired, async (req, res) => {
         turnoActual.horaFin = minutesToTime(finMinutos);
         turnoActual.inicioMinutos = inicioMinutos;
         turnoActual.finMinutos = finMinutos;
-        turnoActual.servicio = servicio;
+        turnoActual.servicio = servicioResuelto.servicio;
+        turnoActual.servicioId = servicioResuelto.servicioId;
+        turnoActual.servicioNombre = servicioResuelto.servicioNombre;
         turnoActual.duracionMinutos = duracionMinutos;
         turnoActual.cliente = clienteResuelto.clienteNombreFinal;
         turnoActual.clienteId = clienteResuelto.clienteId;
@@ -272,7 +322,8 @@ router.put('/:id', authRequired, notAgendaRequired, async (req, res) => {
 
         const turnoPopulado = await Appointment.findById(turnoActual._id)
             .populate('peluquero', 'nombre telefono porcentajeComision agenda activo')
-            .populate('clienteId', 'nombre telefono instagram fechaCumpleanos foto1 foto2 ultimaAtencion ultimaAtencionPeluquero');
+            .populate('clienteId', 'nombre telefono instagram fechaCumpleanos foto1 foto2 ultimaAtencion ultimaAtencionPeluquero')
+            .populate('servicioId', 'nombre precio duracionMinutos');
 
         return res.json(turnoPopulado);
     } catch (error) {
@@ -298,7 +349,8 @@ router.patch('/:id/estado', authRequired, async (req, res) => {
 
     const turnoPopulado = await Appointment.findById(turno._id)
         .populate('peluquero', 'nombre telefono porcentajeComision agenda activo')
-        .populate('clienteId', 'nombre telefono instagram fechaCumpleanos foto1 foto2 ultimaAtencion ultimaAtencionPeluquero');
+        .populate('clienteId', 'nombre telefono instagram fechaCumpleanos foto1 foto2 ultimaAtencion ultimaAtencionPeluquero')
+        .populate('servicioId', 'nombre precio duracionMinutos');
 
     return res.json(turnoPopulado);
 });

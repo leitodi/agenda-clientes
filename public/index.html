@@ -86,10 +86,7 @@
                     </label>
                     <label>
                         Servicio
-                        <select id="turnoServicio" required>
-                            <option value="corte">Corte (30 min)</option>
-                            <option value="corte_barba">Corte + barba (45 min)</option>
-                        </select>
+                        <select id="turnoServicio" required></select>
                     </label>
                     <label>
                         Cliente (opcional)
@@ -365,6 +362,10 @@
                         Importe
                         <input id="servicioPrecio" type="number" min="0" step="0.01" required>
                     </label>
+                    <label>
+                        Duracion (minutos)
+                        <input id="servicioDuracion" type="number" min="1" step="1" required>
+                    </label>
                     <div class="inline-actions">
                         <button type="submit" class="btn primary">Guardar servicio</button>
                         <button id="cancelEditServicio" type="button" class="btn">Cancelar edicion</button>
@@ -377,6 +378,7 @@
                             <tr>
                                 <th>Servicio</th>
                                 <th>Importe</th>
+                                <th>Duracion</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>

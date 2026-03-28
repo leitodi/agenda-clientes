@@ -172,11 +172,33 @@ function validarRangoReportes(desde, hasta) {
 }
 
 function getServiceDurationMinutes(servicio) {
+    const servicioCaja = state.serviciosCaja.find((item) => item._id === servicio);
+    if (servicioCaja) {
+        return Number(servicioCaja.duracionMinutos || 30);
+    }
+
     return Number(state.servicios[servicio]?.durationMinutes || 30);
 }
 
+function getServicioTurnoLabel(turno) {
+    if (turno?.servicioNombre) {
+        return turno.servicioNombre;
+    }
+
+    if (turno?.servicioId?.nombre) {
+        return turno.servicioId.nombre;
+    }
+
+    const servicioCaja = state.serviciosCaja.find((item) => item._id === turno?.servicio);
+    if (servicioCaja) {
+        return servicioCaja.nombre;
+    }
+
+    return state.servicios[turno?.servicio]?.label || turno?.servicio || '-';
+}
+
 function getTurnoLastStartMinutes() {
-    const servicio = $('turnoServicio')?.value || 'corte';
+    const servicio = $('turnoServicio')?.value || '';
     const duration = getServiceDurationMinutes(servicio);
     return CLOSING_MINUTES - duration;
 }
@@ -437,6 +459,33 @@ function renderCajaServiciosSelect() {
     syncCajaMontoByServicio();
 }
 
+function renderTurnoServiciosSelect() {
+    const select = $('turnoServicio');
+    if (!select) {
+        return;
+    }
+
+    if (!state.serviciosCaja.length) {
+        select.innerHTML = '<option value="">Sin servicios disponibles</option>';
+        select.value = '';
+        applyTurnoDateTimeConstraints();
+        return;
+    }
+
+    const current = select.value;
+    select.innerHTML = state.serviciosCaja.map((servicio) => (
+        `<option value="${servicio._id}">${escapeHtml(servicio.nombre)} (${Number(servicio.duracionMinutos || 30)} min)</option>`
+    )).join('');
+
+    if (current && state.serviciosCaja.some((item) => item._id === current)) {
+        select.value = current;
+    } else {
+        select.value = state.serviciosCaja[0]._id;
+    }
+
+    applyTurnoDateTimeConstraints();
+}
+
 function renderPeluquerosTable() {
     const body = $('peluquerosTableBody');
 
@@ -465,7 +514,7 @@ function renderServiciosTable() {
     }
 
     if (!state.serviciosCaja.length) {
-        body.innerHTML = '<tr><td colspan="3">No hay servicios cargados.</td></tr>';
+        body.innerHTML = '<tr><td colspan="4">No hay servicios cargados.</td></tr>';
         return;
     }
 
@@ -473,6 +522,7 @@ function renderServiciosTable() {
         <tr>
             <td>${escapeHtml(servicio.nombre)}</td>
             <td>$${formatCurrency(servicio.precio)}</td>
+            <td>${Number(servicio.duracionMinutos || 30)} min</td>
             <td>
                 <div class="row-actions">
                     <button class="btn" type="button" data-action="edit-servicio" data-id="${servicio._id}">Editar</button>
@@ -527,7 +577,7 @@ function renderTurnosTable() {
     }
 
     body.innerHTML = turnosVisibles.map((t) => {
-        const servicio = state.servicios[t.servicio]?.label || t.servicio;
+        const servicio = getServicioTurnoLabel(t);
         const hasPhotos = Boolean(t.foto1 || t.foto2);
         const fotosCell = hasPhotos
             ? `<button class="btn photo-thumb-btn" type="button" data-action="view-turno-fotos" data-id="${t._id}">Ver fotos</button>`
@@ -569,7 +619,7 @@ function renderTurnosAhoraPanel() {
     panel.classList.remove('hidden');
     resumen.textContent = `Hay ${state.turnosDelMomento.length} turno(s) en horario para atender ahora.`;
     list.innerHTML = state.turnosDelMomento.map((turno) => {
-        const servicio = state.servicios[turno.servicio]?.label || turno.servicio;
+        const servicio = getServicioTurnoLabel(turno);
         return `
             <article class="turno-alert-card">
                 <div class="turno-alert-copy">
@@ -1284,6 +1334,7 @@ function resetServicioForm() {
     $('servicioId').value = '';
     $('servicioNombre').value = '';
     $('servicioPrecio').value = '';
+    $('servicioDuracion').value = '30';
 }
 
 function readPeluqueroAgenda() {
@@ -1337,6 +1388,7 @@ function fillServicioForm(servicioId) {
     $('servicioId').value = servicio._id;
     $('servicioNombre').value = servicio.nombre;
     $('servicioPrecio').value = Number(servicio.precio).toFixed(2);
+    $('servicioDuracion').value = Number(servicio.duracionMinutos || 30);
 }
 
 function getTurnoPhotoRefs(slot) {
@@ -1816,6 +1868,7 @@ async function cargarPeluqueros() {
 async function cargarServiciosCaja() {
     state.serviciosCaja = await apiFetch('/api/servicios');
     renderCajaServiciosSelect();
+    renderTurnoServiciosSelect();
     renderServiciosTable();
 }
 
@@ -1886,20 +1939,41 @@ async function cargarUsuarios() {
 }
 
 async function cargarTodoInicial() {
-    await cargarConfig();
-    await cargarServiciosCaja();
-    await cargarPeluqueros();
-    await cargarClientes();
-    await cargarTurnos();
-    await cargarTurnosDelMomento({ silent: true });
+    const errores = [];
+
+    async function intentarCarga(label, loader) {
+        try {
+            await loader();
+        } catch (error) {
+            console.error(`Error cargando ${label}:`, error);
+            errores.push(label);
+        }
+    }
+
+    await Promise.all([
+        intentarCarga('configuracion', cargarConfig),
+        intentarCarga('servicios', cargarServiciosCaja),
+        intentarCarga('peluqueros', cargarPeluqueros),
+        intentarCarga('clientes', cargarClientes),
+        intentarCarga('turnos', cargarTurnos),
+        intentarCarga('turnos del momento', () => cargarTurnosDelMomento({ silent: true }))
+    ]);
 
     if (!isAgendaRole()) {
         await Promise.all([
-            cargarDashboard(),
-            cargarUsuarios(),
-            cargarReporteDia()
+            intentarCarga('dashboard', cargarDashboard),
+            intentarCarga('usuarios', cargarUsuarios),
+            intentarCarga('reportes', cargarReporteDia)
         ]);
     }
+
+    if (errores.length) {
+        const resumen = errores.slice(0, 3).join(', ');
+        const sufijo = errores.length > 3 ? ', ...' : '';
+        showMessage(`La app cargo de forma parcial. Fallaron: ${resumen}${sufijo}.`, 'error');
+    }
+
+    return errores;
 }
 
 function showApp() {
@@ -2036,9 +2110,11 @@ function attachEvents() {
 
             $('loginForm').reset();
             showApp();
-            await cargarTodoInicial();
+            const erroresCarga = await cargarTodoInicial();
             startTurnosAhoraWatcher();
-            showMessage('Sesion iniciada correctamente');
+            if (!erroresCarga.length) {
+                showMessage('Sesion iniciada correctamente');
+            }
         } catch (error) {
             showMessage(error.message, 'error');
         }
@@ -2151,7 +2227,7 @@ function attachEvents() {
                 fecha: fechaTurno,
                 hora: horaTurno,
                 peluqueroId: $('turnoPeluquero').value,
-                servicio: servicioTurno,
+                servicioId: servicioTurno,
                 cliente: clienteNombre,
                 clienteId: clienteCoincidente?._id || null,
                 foto1,
@@ -2470,7 +2546,8 @@ function attachEvents() {
             const id = $('servicioId').value;
             const payload = {
                 nombre: $('servicioNombre').value.trim(),
-                precio: Number($('servicioPrecio').value)
+                precio: Number($('servicioPrecio').value),
+                duracionMinutos: Number($('servicioDuracion').value)
             };
 
             if (id) {

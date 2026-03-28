@@ -86,13 +86,13 @@ async function ensureSeedData() {
     });
 
     const defaultServices = [
-        { nombre: 'Cejas', precio: 5000 },
-        { nombre: 'Barba', precio: 7000 },
-        { nombre: 'Corte', precio: 12000 },
-        { nombre: 'Corte + Barba', precio: 14000 }
+        { nombre: 'Cejas', precio: 5000, duracionMinutos: 15 },
+        { nombre: 'Barba', precio: 7000, duracionMinutos: 20 },
+        { nombre: 'Corte', precio: 12000, duracionMinutos: 30 },
+        { nombre: 'Corte + Barba', precio: 14000, duracionMinutos: 45 }
     ];
 
-    const existingServices = await Service.find().select('nombreNormalizado');
+    const existingServices = await Service.find().select('_id nombre nombreNormalizado duracionMinutos');
     const existingNames = new Set(existingServices.map((item) => item.nombreNormalizado));
     const missingServices = defaultServices.filter((service) => {
         const normalized = String(service.nombre || '').trim().toLowerCase();
@@ -105,6 +105,31 @@ async function ensureSeedData() {
             nombreNormalizado: String(service.nombre || '').trim().toLowerCase()
         })));
         console.log(`Servicios iniciales creados: ${missingServices.length}`);
+    }
+
+    const defaultDurationsByName = new Map(
+        defaultServices.map((service) => [String(service.nombre || '').trim().toLowerCase(), Number(service.duracionMinutos || 30)])
+    );
+
+    const servicesWithoutDuration = existingServices.filter((service) => {
+        return !Number.isInteger(Number(service.duracionMinutos)) || Number(service.duracionMinutos) <= 0;
+    });
+
+    if (servicesWithoutDuration.length) {
+        const operations = servicesWithoutDuration.map((service) => {
+            const normalizedName = String(service.nombreNormalizado || service.nombre || '').trim().toLowerCase();
+            const duracionMinutos = defaultDurationsByName.get(normalizedName) || 30;
+
+            return {
+                updateOne: {
+                    filter: { _id: service._id },
+                    update: { $set: { duracionMinutos } }
+                }
+            };
+        });
+
+        await Service.bulkWrite(operations);
+        console.log(`Servicios actualizados con duracionMinutos: ${servicesWithoutDuration.length}`);
     }
 
     let barbers = await Barber.find().sort({ nombre: 1 });

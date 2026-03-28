@@ -16,9 +16,16 @@ function parsePrice(value) {
     return Number(precio.toFixed(2));
 }
 
+function parseDuration(value) {
+    const duracion = Number(value);
+    if (!Number.isInteger(duracion) || duracion <= 0) {
+        throw new Error('La duracion debe estar expresada en minutos');
+    }
+    return duracion;
+}
+
 router.get('/', authRequired, async (req, res) => {
     const servicios = await Service.find().sort({ nombre: 1 });
-    debugger;
     return res.json(servicios);
 });
 
@@ -30,10 +37,12 @@ router.post('/', authRequired, adminRequired, async (req, res) => {
         }
 
         const precio = parsePrice(req.body?.precio);
+        const duracionMinutos = parseDuration(req.body?.duracionMinutos);
         const servicio = await Service.create({
             nombre,
             nombreNormalizado: normalizeName(nombre),
-            precio
+            precio,
+            duracionMinutos
         });
 
         return res.status(201).json(servicio);
@@ -58,9 +67,11 @@ router.put('/:id', authRequired, adminRequired, async (req, res) => {
         }
 
         const precio = parsePrice(req.body?.precio);
+        const duracionMinutos = parseDuration(req.body?.duracionMinutos);
         servicio.nombre = nombre;
         servicio.nombreNormalizado = normalizeName(nombre);
         servicio.precio = precio;
+        servicio.duracionMinutos = duracionMinutos;
         await servicio.save();
 
         return res.json(servicio);
@@ -81,4 +92,3 @@ router.delete('/:id', authRequired, adminRequired, async (req, res) => {
 });
 
 module.exports = router;
-
