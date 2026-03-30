@@ -1048,8 +1048,10 @@ function buildCumpleMessage(clienteNombre, fechaSeleccionada) {
         ? fechaCompleta.slice(0, 5)
         : fechaCompleta;
     return `Hola ${nombre}!
-Hoy, ${fechaTexto}, es tu cumpleaños, queremos desearte feliz cumpleaños y regalarte un corte gratis 🙌🏼. Escribinos para reservarte tu turno 📲
-¡Te esperamos!
+El ${fechaTexto} es tu cumple y en Salón Milano queremos celebrarlo con vos.
+🎁 Tenés un corte de regalo para usar ese día. 
+Escribinos y reservá tu turno 👉
+Te esperamos 💈✨
 - Salón Milano 🪞`;
 }
 
