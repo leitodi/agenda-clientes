@@ -1042,9 +1042,13 @@ function toWhatsAppNumber(rawPhone) {
 }
 
 function buildCumpleMessage(clienteNombre, fechaSeleccionada) {
-    const nombre = String(clienteNombre || '').trim();
+    const nombre = String(clienteNombre || '').trim().split(/\s+/).filter(Boolean)[0] || '';
+    const fechaCompleta = formatDateLabel(fechaSeleccionada);
+    const fechaTexto = /^\d{2}\/\d{2}\/\d{4}$/.test(fechaCompleta)
+        ? fechaCompleta.slice(0, 5)
+        : fechaCompleta;
     return `Hola ${nombre}!
-Hoy es tu cumpleaños, queremos desearte feliz cumpleaños y regalarte un corte gratis 🙌🏼. Escribinos para reservarte tu turno 📲
+Hoy, ${fechaTexto}, es tu cumpleaños, queremos desearte feliz cumpleaños y regalarte un corte gratis 🙌🏼. Escribinos para reservarte tu turno 📲
 ¡Te esperamos!
 - Salón Milano 🪞`;
 }
