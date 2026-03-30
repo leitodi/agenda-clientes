@@ -1,4 +1,4 @@
-const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'MiÃ©rcoles', 'Jueves', 'Viernes', 'SÃ¡bado'];
 
 const MAX_IMAGE_DIMENSION = 1280;
 const TARGET_IMAGE_BYTES = 950 * 1024;
@@ -176,7 +176,7 @@ function validarRangoReportes(desde, hasta) {
 
     const diffDays = Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
     if (diffDays > 31) {
-        throw new Error('El rango máximo permitido es 1 mes (31 días)');
+        throw new Error('El rango mÃ¡ximo permitido es 1 mes (31 dÃ­as)');
     }
 }
 
@@ -749,7 +749,7 @@ function renderTurnosAhoraPanel() {
             <article class="turno-alert-card">
                 <div class="turno-alert-copy">
                     <strong>${escapeHtml(turno.cliente || 'Cliente sin nombre')} - ${escapeHtml(turno.peluquero?.nombre || 'Sin peluquero')}</strong>
-                    <p>${escapeHtml(turno.horaInicio)} a ${escapeHtml(turno.horaFin)} · ${escapeHtml(servicio)}</p>
+                    <p>${escapeHtml(turno.horaInicio)} a ${escapeHtml(turno.horaFin)} Â· ${escapeHtml(servicio)}</p>
                 </div>
                 ${renderTurnoActionButtons(turno)}
             </article>
@@ -1047,16 +1047,35 @@ function buildCumpleMessage(clienteNombre, fechaSeleccionada) {
     const fechaTexto = /^\d{2}\/\d{2}\/\d{4}$/.test(fechaCompleta)
         ? fechaCompleta.slice(0, 5)
         : fechaCompleta;
+
     return `Hola ${nombre}!
-El ${fechaTexto} es tu cumple y en Salón Milano queremos celebrarlo con vos.
-🎁 Tenés un corte de regalo para usar ese día. 
-Escribinos y reservá tu turno 👉
+El, ${fechaTexto} es tu cumple y en Salón Milano queremos celebrarlo con vos.
+🎁 Tenés un corte de regalo para usar ese día. Escribinos y reservá tu turno 👉
 Te esperamos 💈✨
 - Salón Milano 🪞`;
 }
 
 function toDateStringLocal(date) {
     return date.toISOString().slice(0, 10);
+}
+
+function buildCumpleMessage(clienteNombre, fechaSeleccionada) {
+    const nombre = String(clienteNombre || '').trim().split(/\s+/).filter(Boolean)[0] || '';
+    const fechaCompleta = formatDateLabel(fechaSeleccionada);
+    const fechaTexto = /^\d{2}\/\d{2}\/\d{4}$/.test(fechaCompleta)
+        ? fechaCompleta.slice(0, 5)
+        : fechaCompleta;
+    const regaloEmoji = '\uD83C\uDF81';
+    const dedoEmoji = '\uD83D\uDC49';
+    const barberEmoji = '\uD83D\uDC88';
+    const brilloEmoji = '\u2728';
+    const espejoEmoji = '\uD83E\uDE9E';
+
+    return `Hola ${nombre}!
+El, ${fechaTexto} es tu cumple y en Salón Milano queremos celebrarlo con vos.
+${regaloEmoji} Tenés un corte de regalo para usar ese día. Escribinos y reservá tu turno ${dedoEmoji}
+Te esperamos ${barberEmoji}${brilloEmoji}
+- Salón Milano ${espejoEmoji}`;
 }
 
 function getBirthdayEntriesForDate(dateString) {
@@ -1252,7 +1271,7 @@ function renderCumpleanos() {
     }
 
     if (!selectedDate) {
-        resumen.textContent = `Cumpleaños de ${formatMonthYearLabel(monthData.year, monthData.month)}: ${cumpleaneros.length} persona(s) - ${cumpleanerosClientes.length} cliente(s), ${cumpleanerosPersonal.length} personal. Selecciona un día verde para ver el detalle.`;
+        resumen.textContent = `CumpleaÃ±os de ${formatMonthYearLabel(monthData.year, monthData.month)}: ${cumpleaneros.length} persona(s) - ${cumpleanerosClientes.length} cliente(s), ${cumpleanerosPersonal.length} personal. Selecciona un dÃ­a verde para ver el detalle.`;
         body.innerHTML = '<tr><td colspan="5">Selecciona un dia con linea verde para ver los cumpleanos.</td></tr>';
         return;
     }
@@ -1265,7 +1284,7 @@ function renderCumpleanos() {
 
     const clientesDelDia = selectedEntries.filter((persona) => persona.tipo === 'Cliente').length;
     const personalDelDia = selectedEntries.filter((persona) => persona.tipo === 'Personal').length;
-    resumen.textContent = `Cumpleaños del ${formatDateLabel(selectedDate)}: ${selectedEntries.length} persona(s) - ${clientesDelDia} cliente(s), ${personalDelDia} personal.`;
+    resumen.textContent = `CumpleaÃ±os del ${formatDateLabel(selectedDate)}: ${selectedEntries.length} persona(s) - ${clientesDelDia} cliente(s), ${personalDelDia} personal.`;
     body.innerHTML = selectedEntries.map((persona) => {
         const fullName = splitFullName(persona.nombreCompleto);
         const telefono = String(persona.telefono || '').trim();
@@ -2987,3 +3006,4 @@ async function init() {
 }
 
 init();
+
