@@ -111,7 +111,7 @@ async function getLatestAttendanceByClient(normalizedNames) {
 router.get('/', authRequired, async (req, res) => {
     const clientes = await Client.find()
         .select('-foto1 -foto2')
-        .sort({ nombreNormalizado: 1 });
+        .sort({ createdAt: -1, _id: -1 });
     const latestAttendanceByClient = await getLatestAttendanceByClient(clientes.map((item) => item.nombreNormalizado));
 
     const response = clientes.map((cliente) => {
