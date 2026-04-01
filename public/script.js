@@ -27,6 +27,9 @@ const state = {
     pendingTurnoPayload: null,
     pendingTurnoClienteNombre: '',
     atenciones: [],
+    consultasSeguimiento: null,
+    consultasSeguimientoFiltro: 'todos',
+    asesorIaResultado: null,
     usuarios: [],
     loadedTabs: {}
 };
@@ -1551,6 +1554,271 @@ function renderReportes(atenciones = []) {
     `).join('');
 }
 
+function buildSeguimientoMessage(clienteNombre, diasDesdeUltimoCorte) {
+    const nombre = String(clienteNombre || '').trim().split(/\s+/).filter(Boolean)[0] || '';
+    const dias = Number(diasDesdeUltimoCorte || 0);
+
+    return `Hola ${nombre}! Te escribimos desde Salon Milano. Ya pasaron ${dias} dias desde tu ultimo corte. Si quieres, te ayudamos a reservar tu proximo turno.`;
+}
+
+function parseIsoDateOnlyLocal(dateString) {
+    const text = String(dateString || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        return null;
+    }
+
+    const [year, month, day] = text.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+
+    if (
+        Number.isNaN(date.getTime())
+        || date.getFullYear() !== year
+        || date.getMonth() !== month - 1
+        || date.getDate() !== day
+    ) {
+        return null;
+    }
+
+    return date;
+}
+
+function getDiasDesdeUltimoCorteLocal(ultimaAtencion) {
+    const ultimaFecha = parseIsoDateOnlyLocal(ultimaAtencion);
+    if (!ultimaFecha) {
+        return null;
+    }
+
+    const hoy = parseIsoDateOnlyLocal(today());
+    if (!hoy) {
+        return null;
+    }
+
+    return Math.max(0, Math.floor((hoy.getTime() - ultimaFecha.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+function getConsultaColorData(diasDesdeUltimoCorte) {
+    if (diasDesdeUltimoCorte <= 7) {
+        return { color: 'verde', estado: 'Ultima semana', prioridad: 3 };
+    }
+
+    if (diasDesdeUltimoCorte <= 29) {
+        return { color: 'amarillo', estado: 'Entre 8 y 29 dias', prioridad: 2 };
+    }
+
+    return { color: 'rojo', estado: '1 mes o mas', prioridad: 1 };
+}
+
+function buildConsultaSeguimientoDesdeClientes(clientes) {
+    const rows = (clientes || [])
+        .map((cliente) => {
+            const diasDesdeUltimoCorte = getDiasDesdeUltimoCorteLocal(cliente.ultimaAtencion);
+            if (diasDesdeUltimoCorte === null) {
+                return null;
+            }
+
+            const colorData = getConsultaColorData(diasDesdeUltimoCorte);
+
+            return {
+                id: cliente._id,
+                nombre: String(cliente.nombre || '').trim(),
+                telefono: String(cliente.telefono || '').trim(),
+                ultimaAtencion: String(cliente.ultimaAtencion || '').trim(),
+                diasDesdeUltimoCorte,
+                color: colorData.color,
+                estado: colorData.estado,
+                prioridad: colorData.prioridad
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            if (a.prioridad !== b.prioridad) {
+                return a.prioridad - b.prioridad;
+            }
+
+            if (a.diasDesdeUltimoCorte !== b.diasDesdeUltimoCorte) {
+                return b.diasDesdeUltimoCorte - a.diasDesdeUltimoCorte;
+            }
+
+            return a.nombre.localeCompare(b.nombre);
+        });
+
+    const totals = rows.reduce((acc, row) => {
+        acc.total += 1;
+        acc[row.color] += 1;
+        return acc;
+    }, {
+        total: 0,
+        verde: 0,
+        amarillo: 0,
+        rojo: 0
+    });
+
+    return { totals, rows };
+}
+
+function renderConsultaSeguimiento() {
+    const resumen = $('consultasSeguimientoResumen');
+    const body = $('consultasSeguimientoTableBody');
+    const tableWrap = $('consultasSeguimientoTableWrap');
+
+    if (!resumen || !body || !tableWrap) {
+        return;
+    }
+
+    if (!state.consultasSeguimiento) {
+        resumen.innerHTML = '';
+        resumen.classList.add('hidden');
+        body.innerHTML = '<tr><td colspan="6">Sin datos.</td></tr>';
+        tableWrap.classList.add('hidden');
+        return;
+    }
+
+    const data = state.consultasSeguimiento;
+    resumen.classList.remove('hidden');
+    tableWrap.classList.remove('hidden');
+    const filtroActivo = state.consultasSeguimientoFiltro || 'todos';
+
+    resumen.innerHTML = `
+        <button type="button" class="consulta-card consulta-card-verde ${filtroActivo === 'verde' ? 'consulta-card-active' : ''}" data-action="filtro-consulta-color" data-color="verde">
+            <span>Verde</span>
+            <strong>${Number(data.totals?.verde || 0)}</strong>
+            <small>Clientes atendidos en la ultima semana</small>
+        </button>
+        <button type="button" class="consulta-card consulta-card-amarillo ${filtroActivo === 'amarillo' ? 'consulta-card-active' : ''}" data-action="filtro-consulta-color" data-color="amarillo">
+            <span>Amarillo</span>
+            <strong>${Number(data.totals?.amarillo || 0)}</strong>
+            <small>Clientes con 8 a 29 dias desde el ultimo corte</small>
+        </button>
+        <button type="button" class="consulta-card consulta-card-rojo ${filtroActivo === 'rojo' ? 'consulta-card-active' : ''}" data-action="filtro-consulta-color" data-color="rojo">
+            <span>Rojo</span>
+            <strong>${Number(data.totals?.rojo || 0)}</strong>
+            <small>Clientes con 1 mes o mas desde el ultimo corte</small>
+        </button>
+        <button type="button" class="consulta-card ${filtroActivo === 'todos' ? 'consulta-card-active' : ''}" data-action="filtro-consulta-color" data-color="todos">
+            <span>Todos</span>
+            <strong>${Number(data.totals?.total || 0)}</strong>
+            <small>Ver todos los colores en la tabla</small>
+        </button>
+    `;
+
+    const rows = filtroActivo === 'todos'
+        ? data.rows
+        : data.rows.filter((row) => row.color === filtroActivo);
+
+    if (!rows?.length) {
+        body.innerHTML = '<tr><td colspan="6">No hay clientes con ultima atencion registrada para esta consulta.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = rows.map((row) => {
+        const waNumber = toWhatsAppNumber(row.telefono);
+        const waText = encodeURIComponent(buildSeguimientoMessage(row.nombre, row.diasDesdeUltimoCorte));
+        const waLink = waNumber ? `https://wa.me/${waNumber}?text=${waText}` : '';
+        const telefonoCell = waLink
+            ? `<a class="cumple-phone-link" href="${waLink}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.telefono || '-')}</a>`
+            : escapeHtml(row.telefono || '-');
+        const waCell = waLink
+            ? `<a class="btn whatsapp-btn" href="${waLink}" target="_blank" rel="noopener noreferrer">WhatsApp</a>`
+            : '-';
+
+        return `
+            <tr class="consulta-row consulta-row-${escapeHtml(row.color)}">
+                <td>${escapeHtml(row.nombre || '-')}</td>
+                <td>${telefonoCell}</td>
+                <td>${escapeHtml(formatDateLabel(row.ultimaAtencion))}</td>
+                <td>${Number(row.diasDesdeUltimoCorte || 0)}</td>
+                <td><span class="consulta-estado consulta-estado-${escapeHtml(row.color)}">${escapeHtml(row.estado || '-')}</span></td>
+                <td>${waCell}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderIaList(targetId, items, emptyMessage) {
+    const container = $(targetId);
+    if (!container) {
+        return;
+    }
+
+    if (!items.length) {
+        container.innerHTML = `<li>${escapeHtml(emptyMessage)}</li>`;
+        return;
+    }
+
+    container.innerHTML = items
+        .map((item) => `<li>${escapeHtml(item)}</li>`)
+        .join('');
+}
+
+function renderAsesorIaResultado() {
+    const empty = $('asesorIaEmpty');
+    const result = $('asesorIaResultado');
+    const data = state.asesorIaResultado;
+
+    if (!empty || !result) {
+        return;
+    }
+
+    if (!data) {
+        empty.classList.remove('hidden');
+        result.classList.add('hidden');
+        return;
+    }
+
+    empty.classList.add('hidden');
+    result.classList.remove('hidden');
+
+    $('iaRecomendacionPrincipal').textContent = data.recomendacion?.recomendacionPrincipal || '-';
+    $('iaResumen').textContent = data.recomendacion?.resumen || '-';
+    $('iaTecnicaSugerida').textContent = data.recomendacion?.tecnicaSugerida || '-';
+    $('iaNivelMantenimiento').textContent = data.recomendacion?.nivelMantenimiento || '-';
+
+    const modoBadge = $('iaModoBadge');
+    const nota = $('iaNota');
+    if (data.modo === 'demo') {
+        modoBadge.textContent = 'Modo demo';
+        modoBadge.className = 'ia-mode-badge';
+        modoBadge.classList.remove('hidden');
+        nota.textContent = data.nota || 'Este resultado es solo para prueba.';
+        nota.classList.remove('hidden');
+    } else {
+        modoBadge.textContent = 'IA activa';
+        modoBadge.className = 'ia-mode-badge ia-mode-badge-live';
+        modoBadge.classList.remove('hidden');
+        if (data.nota) {
+            nota.textContent = data.nota;
+            nota.classList.remove('hidden');
+        } else {
+            nota.textContent = '';
+            nota.classList.add('hidden');
+        }
+    }
+
+    renderIaList('iaAlternativas', data.recomendacion?.alternativas || [], 'Sin alternativas cargadas.');
+    renderIaList('iaAdvertencias', data.recomendacion?.advertencias || [], 'Sin advertencias destacadas.');
+
+    const image = $('iaSimulacionPreview');
+    if (data.simulacion) {
+        image.src = data.simulacion;
+        image.classList.remove('hidden');
+    } else {
+        image.src = '';
+        image.classList.add('hidden');
+    }
+}
+
+function resetAsesorIa() {
+    $('asesorIaForm').reset();
+    clearIaPhoto();
+    state.asesorIaResultado = null;
+    renderAsesorIaResultado();
+}
+
+function clearAsesorIaResultadoOnly() {
+    state.asesorIaResultado = null;
+    renderAsesorIaResultado();
+}
+
 function resetPeluqueroForm() {
     $('peluqueroId').value = '';
     $('peluqueroNombre').value = '';
@@ -1658,6 +1926,14 @@ function getClientePhotoRefs(slot) {
     };
 }
 
+function getIaPhotoRefs() {
+    return {
+        input: $('iaFotoInput'),
+        preview: $('iaFotoPreview'),
+        status: $('iaFotoEstado')
+    };
+}
+
 function setTurnoPhotoStatus(slot, message, isError = false) {
     const { status } = getTurnoPhotoRefs(slot);
     status.textContent = message || '';
@@ -1666,6 +1942,12 @@ function setTurnoPhotoStatus(slot, message, isError = false) {
 
 function setClientePhotoStatus(slot, message, isError = false) {
     const { status } = getClientePhotoRefs(slot);
+    status.textContent = message || '';
+    status.style.color = isError ? '#b91c1c' : '#475569';
+}
+
+function setIaPhotoStatus(message, isError = false) {
+    const { status } = getIaPhotoRefs();
     status.textContent = message || '';
     status.style.color = isError ? '#b91c1c' : '#475569';
 }
@@ -1850,6 +2132,41 @@ async function processClientePhoto(slot) {
     }
 }
 
+async function processIaPhoto() {
+    const refs = getIaPhotoRefs();
+    const file = refs.input.files && refs.input.files[0] ? refs.input.files[0] : null;
+
+    if (!file) {
+        return;
+    }
+
+    try {
+        clearAsesorIaResultadoOnly();
+        setIaPhotoStatus('Procesando imagen...');
+        const conversion = await convertirImagenABase64(file);
+        refs.input.dataset.base64 = conversion.dataUrl;
+
+        if (conversion.previewable) {
+            refs.preview.src = conversion.dataUrl;
+            refs.preview.classList.remove('hidden');
+        } else {
+            refs.preview.src = '';
+            refs.preview.classList.add('hidden');
+        }
+
+        const kb = Math.round(estimarBytesDesdeDataURL(conversion.dataUrl) / 1024);
+        const suffix = conversion.previewable ? '' : ' - sin vista previa';
+        setIaPhotoStatus(`Lista (${kb} KB)${suffix}`);
+    } catch (error) {
+        refs.input.value = '';
+        delete refs.input.dataset.base64;
+        refs.preview.src = '';
+        refs.preview.classList.add('hidden');
+        setIaPhotoStatus(error.message, true);
+        throw error;
+    }
+}
+
 async function getProcessedTurnoPhoto(slot) {
     const refs = getTurnoPhotoRefs(slot);
 
@@ -1874,6 +2191,21 @@ async function getProcessedClientePhoto(slot) {
 
     if (refs.input.files && refs.input.files[0]) {
         await processClientePhoto(slot);
+        return refs.input.dataset.base64 || '';
+    }
+
+    return '';
+}
+
+async function getProcessedIaPhoto() {
+    const refs = getIaPhotoRefs();
+
+    if (refs.input.dataset.base64) {
+        return refs.input.dataset.base64;
+    }
+
+    if (refs.input.files && refs.input.files[0]) {
+        await processIaPhoto();
         return refs.input.dataset.base64 || '';
     }
 
@@ -1919,6 +2251,15 @@ function clearClientePhotos() {
     });
 }
 
+function clearIaPhoto() {
+    const refs = getIaPhotoRefs();
+    refs.input.value = '';
+    delete refs.input.dataset.base64;
+    refs.preview.src = '';
+    refs.preview.classList.add('hidden');
+    setIaPhotoStatus('');
+}
+
 function openTurnoPhotoPicker(slot, source) {
     const refs = getTurnoPhotoRefs(slot);
     refs.input.value = '';
@@ -1954,6 +2295,25 @@ function openClientePhotoPicker(slot, source) {
 }
 
 window.openClientePhotoPicker = openClientePhotoPicker;
+
+function openIaPhotoPicker(source) {
+    const refs = getIaPhotoRefs();
+    refs.input.value = '';
+    delete refs.input.dataset.base64;
+    clearAsesorIaResultadoOnly();
+
+    if (source === 'camera') {
+        refs.input.setAttribute('capture', 'environment');
+        setIaPhotoStatus('Abriendo camara...');
+    } else {
+        refs.input.removeAttribute('capture');
+        setIaPhotoStatus('Selecciona una imagen de la galeria');
+    }
+
+    refs.input.click();
+}
+
+window.openIaPhotoPicker = openIaPhotoPicker;
 
 function openFotosModal(fotoSrc1, fotoSrc2) {
     const modal = $('turnoFotoModal');
@@ -2164,6 +2524,47 @@ async function cargarReporteDia() {
     renderReportes(atenciones);
 }
 
+async function cargarConsultaSeguimiento() {
+    if (!isAdminRole()) {
+        return;
+    }
+
+    const clientes = await apiFetch('/api/clientes');
+    state.consultasSeguimiento = buildConsultaSeguimientoDesdeClientes(clientes);
+    state.consultasSeguimientoFiltro = 'todos';
+    renderConsultaSeguimiento();
+}
+
+async function ejecutarAsesorIa() {
+    if (!isAdminRole()) {
+        return;
+    }
+
+    clearAsesorIaResultadoOnly();
+
+    const pedido = $('iaPedido').value.trim();
+    if (!pedido) {
+        throw new Error('Describe que quiere hacerse el cliente');
+    }
+
+    const foto = await getProcessedIaPhoto();
+    if (!foto) {
+        throw new Error('Debes cargar una foto del cliente');
+    }
+
+    state.asesorIaResultado = await apiFetch('/api/ai/asesor-capilar', {
+        method: 'POST',
+        body: {
+            clienteNombre: $('iaClienteNombre').value.trim(),
+            pedido,
+            foto
+        },
+        loadingText: 'Analizando foto y generando simulacion...'
+    });
+
+    renderAsesorIaResultado();
+}
+
 async function cargarUsuarios() {
     if (!isAdminRole()) {
         return;
@@ -2179,6 +2580,7 @@ async function cargarTodoInicial() {
 }
 
 function showApp() {
+    document.body.classList.add('app-authenticated');
     $('loginView').classList.add('hidden');
     $('appView').classList.remove('hidden');
     $('sessionInfo').textContent = `Usuario: ${state.user.username} (${state.user.role})`;
@@ -2187,6 +2589,11 @@ function showApp() {
 }
 
 function showLogin() {
+    document.body.classList.remove('app-authenticated');
+    state.asesorIaResultado = null;
+    if ($('asesorIaForm')) {
+        resetAsesorIa();
+    }
     $('appView').classList.add('hidden');
     $('loginView').classList.remove('hidden');
 }
@@ -2256,6 +2663,14 @@ function attachEvents() {
     $('clienteFoto2Input').addEventListener('change', async () => {
         try {
             await processClientePhoto('2');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('iaFotoInput').addEventListener('change', async () => {
+        try {
+            await processIaPhoto();
         } catch (error) {
             showMessage(error.message, 'error');
         }
@@ -2896,6 +3311,40 @@ function attachEvents() {
         }
     });
 
+    $('cargarConsultaSeguimiento').addEventListener('click', async () => {
+        try {
+            await cargarConsultaSeguimiento();
+            showMessage('Consulta de clientes actualizada');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('consultasSeguimientoResumen').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-action="filtro-consulta-color"]');
+        if (!button || !state.consultasSeguimiento) {
+            return;
+        }
+
+        state.consultasSeguimientoFiltro = button.dataset.color || 'todos';
+        renderConsultaSeguimiento();
+    });
+
+    $('asesorIaForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            await ejecutarAsesorIa();
+            showMessage('Analisis de IA generado correctamente');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('limpiarAsesorIa').addEventListener('click', () => {
+        resetAsesorIa();
+    });
+
     $('usuarioForm').addEventListener('submit', async (event) => {
         event.preventDefault();
 
@@ -3001,6 +3450,7 @@ async function init() {
     setDefaultDates();
     resetPeluqueroForm();
     resetServicioForm();
+    renderAsesorIaResultado();
     attachEvents();
     await restoreSession();
 }

@@ -1,6 +1,7 @@
 const express = require('express');
 const Attendance = require('../models/Attendance');
-const { authRequired, notAgendaRequired } = require('../middleware/auth');
+const Client = require('../models/Client');
+const { authRequired, adminRequired, notAgendaRequired } = require('../middleware/auth');
 const XLSX = require('xlsx');
 
 const router = express.Router();
@@ -52,6 +53,78 @@ function getDayName(dateString) {
     const date = new Date(`${dateString}T00:00:00`);
     const names = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
     return names[date.getDay()] || '';
+}
+
+function getBuenosAiresTodayString() {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+
+    const parts = formatter.formatToParts(new Date());
+    const year = parts.find((part) => part.type === 'year')?.value || '1970';
+    const month = parts.find((part) => part.type === 'month')?.value || '01';
+    const day = parts.find((part) => part.type === 'day')?.value || '01';
+
+    return `${year}-${month}-${day}`;
+}
+
+function parseDateOnly(dateString) {
+    const text = String(dateString || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        return null;
+    }
+
+    const [year, month, day] = text.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+
+    if (
+        Number.isNaN(date.getTime())
+        || date.getUTCFullYear() !== year
+        || (date.getUTCMonth() + 1) !== month
+        || date.getUTCDate() !== day
+    ) {
+        return null;
+    }
+
+    return date;
+}
+
+function getDiasDesdeFecha(fechaBase, fechaUltimaAtencion) {
+    const base = parseDateOnly(fechaBase);
+    const ultima = parseDateOnly(fechaUltimaAtencion);
+
+    if (!base || !ultima) {
+        return null;
+    }
+
+    return Math.max(0, Math.floor((base.getTime() - ultima.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+function clasificarSeguimientoCliente(diasDesdeUltimoCorte) {
+    if (diasDesdeUltimoCorte <= 7) {
+        return {
+            color: 'verde',
+            etiqueta: 'Ultima semana',
+            prioridad: 3
+        };
+    }
+
+    if (diasDesdeUltimoCorte <= 29) {
+        return {
+            color: 'amarillo',
+            etiqueta: 'Entre 8 y 29 dias',
+            prioridad: 2
+        };
+    }
+
+    return {
+        color: 'rojo',
+        etiqueta: '1 mes o mas',
+        prioridad: 1
+    };
 }
 
 function validateDateRange(desde, hasta) {
@@ -253,6 +326,66 @@ router.get('/peluqueros', authRequired, notAgendaRequired, async (req, res) => {
     const response = agruparPorPeluquero(atenciones);
 
     return res.json(response);
+});
+
+router.get('/clientes-seguimiento', authRequired, adminRequired, async (req, res) => {
+    const hoy = getBuenosAiresTodayString();
+    const clientes = await Client.find({
+        ultimaAtencion: { $exists: true, $ne: '' }
+    })
+        .select('nombre telefono instagram ultimaAtencion')
+        .sort({ nombre: 1, _id: 1 });
+
+    const rows = clientes
+        .map((cliente) => {
+            const diasDesdeUltimoCorte = getDiasDesdeFecha(hoy, cliente.ultimaAtencion);
+            if (diasDesdeUltimoCorte === null) {
+                return null;
+            }
+
+            const clasificacion = clasificarSeguimientoCliente(diasDesdeUltimoCorte);
+
+            return {
+                id: String(cliente._id),
+                nombre: String(cliente.nombre || '').trim(),
+                telefono: String(cliente.telefono || '').trim(),
+                instagram: String(cliente.instagram || '').trim(),
+                ultimaAtencion: String(cliente.ultimaAtencion || '').trim(),
+                diasDesdeUltimoCorte,
+                color: clasificacion.color,
+                estado: clasificacion.etiqueta,
+                prioridad: clasificacion.prioridad
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            if (a.prioridad !== b.prioridad) {
+                return a.prioridad - b.prioridad;
+            }
+
+            if (a.diasDesdeUltimoCorte !== b.diasDesdeUltimoCorte) {
+                return b.diasDesdeUltimoCorte - a.diasDesdeUltimoCorte;
+            }
+
+            return a.nombre.localeCompare(b.nombre);
+        });
+
+    const totals = rows.reduce((acc, row) => {
+        acc.total += 1;
+        acc[row.color] += 1;
+        return acc;
+    }, {
+        total: 0,
+        verde: 0,
+        amarillo: 0,
+        rojo: 0
+    });
+
+    return res.json({
+        fechaReferencia: hoy,
+        totals,
+        rows
+    });
 });
 
 router.get('/caja-semanal', authRequired, notAgendaRequired, async (req, res) => {

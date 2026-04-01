@@ -62,6 +62,8 @@
                 <button class="tab-btn admin-only" data-tab="servicios">Servicios</button>
                 <button class="tab-btn" data-tab="caja">Caja</button>
                 <button class="tab-btn restricted-agenda" data-tab="reportes">Reportes</button>
+                <button class="tab-btn admin-only" data-tab="consultas">Consultas</button>
+                <button class="tab-btn admin-only" data-tab="asesor-ia">Asesor IA</button>
                 <button class="tab-btn admin-only" data-tab="usuarios">Usuarios</button>
             </nav>
 
@@ -480,6 +482,111 @@
                         <input id="reporteSemanaHasta" type="date">
                     </label>
                     <button id="exportarReporteSemanalExcel" type="button" class="btn">Exportar semanal en Excel</button>
+                </div>
+            </section>
+
+            <section id="tab-consultas" class="tab-panel card hidden admin-only">
+                <h3>Consultas</h3>
+                <p>Listado de clientes segun el tiempo transcurrido desde su ultimo corte.</p>
+
+                <div class="inline-actions">
+                    <button id="cargarConsultaSeguimiento" type="button" class="btn primary">Clientes por color</button>
+                </div>
+
+                <div id="consultasSeguimientoResumen" class="consultas-resumen-grid hidden"></div>
+
+                <div id="consultasSeguimientoTableWrap" class="table-wrap hidden">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th>Telefono</th>
+                                <th>Ultimo corte</th>
+                                <th>Dias</th>
+                                <th>Estado</th>
+                                <th>WhatsApp</th>
+                            </tr>
+                        </thead>
+                        <tbody id="consultasSeguimientoTableBody">
+                            <tr><td colspan="6">Sin datos.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="tab-asesor-ia" class="tab-panel card hidden admin-only">
+                <h3>Asesor IA</h3>
+                <p>Sube una foto, escribe que quiere hacerse el cliente y genera una recomendacion con simulacion visual.</p>
+
+                <div class="ia-layout">
+                    <aside class="ia-photo-panel">
+                        <div class="foto-upload-group">
+                            <label>Foto del cliente</label>
+                            <input id="iaFotoInput" type="file" accept="image/*" class="hidden-file-input">
+                            <div class="inline-actions">
+                                <button type="button" class="btn" onclick="openIaPhotoPicker('camera')">Tomar foto</button>
+                                <button type="button" class="btn" onclick="openIaPhotoPicker('gallery')">Elegir existente</button>
+                            </div>
+                            <small id="iaFotoEstado" class="photo-status"></small>
+                            <img id="iaFotoPreview" class="ia-photo-preview hidden" alt="Foto para analisis IA">
+                        </div>
+                    </aside>
+
+                    <div class="ia-content-panel">
+                        <form id="asesorIaForm" class="form-grid">
+                            <label>
+                                Nombre del cliente (opcional)
+                                <input id="iaClienteNombre" type="text" placeholder="Ej: Juan Perez">
+                            </label>
+                            <label class="ia-full-width">
+                                Que quiere hacerse el cliente
+                                <textarea id="iaPedido" rows="4" placeholder="Ej: me quiero cortar el pelo corto y prolijo, o quiero tener un tono mas claro sin que quede muy jugado"></textarea>
+                            </label>
+                            <div class="inline-actions ia-full-width">
+                                <button type="submit" class="btn primary">Analizar y simular</button>
+                                <button id="limpiarAsesorIa" type="button" class="btn">Limpiar</button>
+                            </div>
+                        </form>
+
+                        <div id="asesorIaEmpty" class="cliente-vacio">Carga una foto y describe el cambio que quiere el cliente para generar la recomendacion.</div>
+
+                        <div id="asesorIaResultado" class="ia-result hidden">
+                            <div class="ia-result-summary report-card">
+                                <p class="section-kicker">Recomendacion</p>
+                                <div id="iaModoBadge" class="ia-mode-badge hidden"></div>
+                                <h4 id="iaRecomendacionPrincipal">-</h4>
+                                <p id="iaResumen"></p>
+                                <p id="iaNota" class="photo-status hidden"></p>
+                                <div class="ia-meta-grid">
+                                    <div>
+                                        <strong>Tecnica sugerida</strong>
+                                        <p id="iaTecnicaSugerida">-</p>
+                                    </div>
+                                    <div>
+                                        <strong>Mantenimiento</strong>
+                                        <p id="iaNivelMantenimiento">-</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="ia-secondary-grid">
+                                <div class="report-card">
+                                    <h4>Alternativas</h4>
+                                    <ul id="iaAlternativas" class="ia-list"></ul>
+                                </div>
+                                <div class="report-card">
+                                    <h4>Advertencias</h4>
+                                    <ul id="iaAdvertencias" class="ia-list"></ul>
+                                </div>
+                            </div>
+
+                            <div class="report-card">
+                                <h4>Simulacion visual</h4>
+                                <p class="photo-status">Imagen orientativa generada por IA para ayudar a la conversacion con el cliente.</p>
+                                <img id="iaSimulacionPreview" class="ia-simulation-preview hidden" alt="Simulacion de peinado por IA">
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
 

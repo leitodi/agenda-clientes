@@ -11,6 +11,7 @@ const barberRoutes = require('./src/routes/barbers');
 const appointmentRoutes = require('./src/routes/appointments');
 const attendanceRoutes = require('./src/routes/attendances');
 const reportRoutes = require('./src/routes/reports');
+const aiRoutes = require('./src/routes/ai');
 const dashboardRoutes = require('./src/routes/dashboard');
 const clientRoutes = require('./src/routes/clients');
 const serviceRoutes = require('./src/routes/services');
@@ -49,6 +50,7 @@ app.use('/api/clientes', clientRoutes);
 app.use('/api/servicios', serviceRoutes);
 app.use('/api/atenciones', attendanceRoutes);
 app.use('/api/reportes', reportRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
 app.use((error, req, res, next) => {
