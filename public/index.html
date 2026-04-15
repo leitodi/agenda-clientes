@@ -287,11 +287,12 @@
                                 <th>Nombre</th>
                                 <th>Teléfono</th>
                                 <th>WhatsApp</th>
+                                <th>Cortes</th>
                             </tr>
                         </thead>
                         <tbody id="cumpleTableBody">
                             <tr>
-                                <td colspan="5">Sin datos para mostrar.</td>
+                                <td colspan="6">Sin datos para mostrar.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -670,6 +671,21 @@
                     <button id="cancelNuevoClienteTurno" type="button" class="btn danger">Cancelar</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div id="cumpleHistorialModal" class="modal hidden">
+        <div class="modal-card modal-card-small">
+            <div class="cumple-historial-header">
+                <div>
+                    <h3 id="cumpleHistorialTitulo">Cantidad de cortes</h3>
+                    <p id="cumpleHistorialResumen" class="cumple-historial-resumen">Selecciona un cliente para ver su historial.</p>
+                </div>
+                <button id="closeCumpleHistorialModal" class="btn danger" type="button">Cerrar</button>
+            </div>
+            <div id="cumpleHistorialBody" class="cumple-historial-body">
+                <p class="cliente-vacio">Sin datos para mostrar.</p>
+            </div>
         </div>
     </div>
 

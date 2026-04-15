@@ -1292,6 +1292,40 @@ tbody tr:hover td {
     object-fit: contain;
 }
 
+.cumple-historial-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.cumple-historial-resumen {
+    margin-top: 6px;
+    color: var(--text-soft);
+}
+
+.cumple-historial-body {
+    display: grid;
+    gap: 16px;
+}
+
+.cumple-historial-total {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    width: fit-content;
+    padding: 10px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(212, 175, 55, 0.18);
+    background: rgba(212, 175, 55, 0.08);
+    color: var(--text-soft);
+}
+
+.cumple-historial-total strong {
+    color: var(--gold);
+    font-size: 1.15rem;
+}
+
 .hidden {
     display: none !important;
 }
@@ -1312,6 +1346,10 @@ tbody tr:hover td {
 
     .clientes-layout {
         grid-template-columns: 1fr;
+    }
+
+    .cumple-historial-header {
+        flex-direction: column;
     }
 
     .ia-layout,

@@ -24,6 +24,8 @@ const state = {
     selectedTurnoClienteId: null,
     selectedCumpleDate: null,
     currentCumpleMonth: null,
+    selectedCumpleHistorialClienteId: null,
+    cumpleHistorialRequestId: 0,
     pendingTurnoPayload: null,
     pendingTurnoClienteNombre: '',
     atenciones: [],
@@ -1094,6 +1096,7 @@ function getBirthdayEntriesForDate(dateString) {
         fecha: dateString,
         tipo: 'Cliente',
         tipoClass: 'cumple-badge-cliente',
+        clienteId: cliente._id || '',
         nombreCompleto: cliente.nombre || '',
         telefono: String(cliente.telefono || '').trim()
     }));
@@ -1269,19 +1272,19 @@ function renderCumpleanos() {
 
     if (!cumpleaneros.length) {
         resumen.textContent = `No hay cumpleanos cargados en ${formatMonthYearLabel(monthData.year, monthData.month)}.`;
-        body.innerHTML = '<tr><td colspan="5">No hay personas para este mes.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6">No hay personas para este mes.</td></tr>';
         return;
     }
 
     if (!selectedDate) {
         resumen.textContent = `CumpleaÃ±os de ${formatMonthYearLabel(monthData.year, monthData.month)}: ${cumpleaneros.length} persona(s) - ${cumpleanerosClientes.length} cliente(s), ${cumpleanerosPersonal.length} personal. Selecciona un dÃ­a verde para ver el detalle.`;
-        body.innerHTML = '<tr><td colspan="5">Selecciona un dia con linea verde para ver los cumpleanos.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6">Selecciona un dia con linea verde para ver los cumpleanos.</td></tr>';
         return;
     }
 
     if (!selectedEntries.length) {
         resumen.textContent = `No hay cumpleanos para el ${formatDateLabel(selectedDate)}.`;
-        body.innerHTML = '<tr><td colspan="5">No hay personas para la fecha seleccionada.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6">No hay personas para la fecha seleccionada.</td></tr>';
         return;
     }
 
@@ -1300,6 +1303,9 @@ function renderCumpleanos() {
         const waCell = waLink
             ? `<a class="btn whatsapp-btn" href="${waLink}" target="_blank" rel="noopener noreferrer">WhatsApp</a>`
             : '-';
+        const cortesCell = persona.tipo === 'Cliente' && persona.clienteId
+            ? `<button class="btn" type="button" data-action="open-cumple-historial" data-cliente-id="${escapeHtml(persona.clienteId)}" data-cliente-nombre="${escapeHtml(persona.nombreCompleto || '')}">Cantidad de cortes</button>`
+            : '-';
 
         return `
             <tr>
@@ -1308,6 +1314,7 @@ function renderCumpleanos() {
                 <td>${escapeHtml(`${fullName.nombre || ''} ${fullName.apellido || ''}`.trim() || persona.nombreCompleto || '-')}</td>
                 <td>${telefonoCell}</td>
                 <td>${waCell}</td>
+                <td>${cortesCell}</td>
             </tr>
         `;
     }).join('');
@@ -1431,6 +1438,116 @@ function openNuevoClienteTurnoModal(nombreCompleto) {
 function closeNuevoClienteTurnoModal() {
     $('nuevoClienteTurnoModal').classList.add('hidden');
     state.pendingTurnoClienteNombre = '';
+}
+
+function setCumpleHistorialModalContent({ title, summary, html }) {
+    const titleEl = $('cumpleHistorialTitulo');
+    const summaryEl = $('cumpleHistorialResumen');
+    const bodyEl = $('cumpleHistorialBody');
+
+    if (titleEl) {
+        titleEl.textContent = title;
+    }
+
+    if (summaryEl) {
+        summaryEl.textContent = summary;
+    }
+
+    if (bodyEl) {
+        bodyEl.innerHTML = html;
+    }
+}
+
+function closeCumpleHistorialModal() {
+    const modal = $('cumpleHistorialModal');
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.add('hidden');
+    state.selectedCumpleHistorialClienteId = null;
+    state.cumpleHistorialRequestId += 1;
+}
+
+async function openCumpleHistorialModal(clienteId, clienteNombre) {
+    const modal = $('cumpleHistorialModal');
+    if (!modal || !clienteId) {
+        return;
+    }
+
+    state.selectedCumpleHistorialClienteId = clienteId;
+    state.cumpleHistorialRequestId += 1;
+    const requestId = state.cumpleHistorialRequestId;
+    const nombre = String(clienteNombre || '').trim() || 'Cliente';
+
+    setCumpleHistorialModalContent({
+        title: `Cantidad de cortes - ${nombre}`,
+        summary: 'Cargando historial...',
+        html: '<p class="cliente-vacio">Cargando historial de cortes...</p>'
+    });
+    modal.classList.remove('hidden');
+
+    try {
+        const historial = await apiFetch(`/api/clientes/${clienteId}/atenciones`, {
+            showLoading: false
+        });
+
+        if (
+            state.cumpleHistorialRequestId !== requestId
+            || state.selectedCumpleHistorialClienteId !== clienteId
+        ) {
+            return;
+        }
+
+        const fechas = Array.isArray(historial.fechas) ? historial.fechas : [];
+        const total = Number.isFinite(Number(historial.total))
+            ? Number(historial.total)
+            : fechas.length;
+        const rows = fechas.length
+            ? fechas.map((fecha, index) => `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${escapeHtml(formatDateLabel(fecha))}</td>
+                </tr>
+            `).join('')
+            : '<tr><td colspan="2">No hay cortes registrados para este cliente.</td></tr>';
+
+        setCumpleHistorialModalContent({
+            title: `Cantidad de cortes - ${historial.nombre || nombre}`,
+            summary: `Total de cortes registrados: ${total}.`,
+            html: `
+                <div class="cumple-historial-total">
+                    <span>Total</span>
+                    <strong>${escapeHtml(String(total))}</strong>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            `
+        });
+    } catch (error) {
+        if (
+            state.cumpleHistorialRequestId !== requestId
+            || state.selectedCumpleHistorialClienteId !== clienteId
+        ) {
+            return;
+        }
+
+        setCumpleHistorialModalContent({
+            title: `Cantidad de cortes - ${nombre}`,
+            summary: 'No se pudo cargar el historial.',
+            html: `<p class="cliente-vacio">${escapeHtml(error.message || 'No se pudo cargar el historial.')}</p>`
+        });
+        showMessage(error.message, 'error');
+    }
 }
 
 function maybeOpenNuevoClienteTurnoModal() {
@@ -2700,10 +2817,26 @@ function attachEvents() {
         renderCumpleanos();
     });
 
+    $('cumpleTableBody').addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-action="open-cumple-historial"]');
+        if (!button) {
+            return;
+        }
+
+        await openCumpleHistorialModal(button.dataset.clienteId, button.dataset.clienteNombre);
+    });
+
     $('closeTurnoFotoModal').addEventListener('click', closeTurnoFotoModal);
     $('turnoFotoModal').addEventListener('click', (event) => {
         if (event.target.id === 'turnoFotoModal') {
             closeTurnoFotoModal();
+        }
+    });
+
+    $('closeCumpleHistorialModal').addEventListener('click', closeCumpleHistorialModal);
+    $('cumpleHistorialModal').addEventListener('click', (event) => {
+        if (event.target.id === 'cumpleHistorialModal') {
+            closeCumpleHistorialModal();
         }
     });
 

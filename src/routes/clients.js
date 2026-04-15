@@ -108,6 +108,44 @@ async function getLatestAttendanceByClient(normalizedNames) {
     ]));
 }
 
+async function getAttendanceHistoryByClient(normalizedName) {
+    const validName = normalizeName(normalizedName);
+    if (!validName) {
+        return [];
+    }
+
+    return Attendance.aggregate([
+        {
+            $match: {
+                cliente: { $exists: true, $ne: '' }
+            }
+        },
+        {
+            $addFields: {
+                clienteNormalizado: {
+                    $toLower: {
+                        $trim: { input: '$cliente' }
+                    }
+                }
+            }
+        },
+        {
+            $match: {
+                clienteNormalizado: validName
+            }
+        },
+        {
+            $sort: { fecha: -1, createdAt: -1 }
+        },
+        {
+            $project: {
+                _id: 1,
+                fecha: 1
+            }
+        }
+    ]);
+}
+
 router.get('/', authRequired, async (req, res) => {
     const clientes = await Client.find()
         .select('-foto1 -foto2')
@@ -200,6 +238,26 @@ router.get('/:id', authRequired, async (req, res) => {
         ...cliente.toObject(),
         ultimaAtencion: latestAttendance.ultimaAtencion,
         ultimaAtencionPeluquero: latestAttendance.ultimaAtencionPeluquero
+    });
+});
+
+router.get('/:id/atenciones', authRequired, async (req, res) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(400).json({ error: 'Cliente invalido' });
+    }
+
+    const cliente = await Client.findById(req.params.id).select('nombre nombreNormalizado');
+    if (!cliente) {
+        return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+
+    const atenciones = await getAttendanceHistoryByClient(cliente.nombreNormalizado);
+
+    return res.json({
+        clienteId: cliente._id,
+        nombre: cliente.nombre,
+        total: atenciones.length,
+        fechas: atenciones.map((item) => String(item.fecha || '')).filter(Boolean)
     });
 });
 
