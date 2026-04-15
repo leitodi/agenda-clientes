@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
+const { version: appVersion } = require('./package.json');
 
 const authRoutes = require('./src/routes/auth');
 const userRoutes = require('./src/routes/users');
@@ -26,14 +27,37 @@ const { SERVICE_TYPES } = require('./src/utils/services');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/agenda_peluqueria';
+const STATIC_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, proxy-revalidate';
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '20mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use((req, res, next) => {
+    if (req.method === 'GET') {
+        res.setHeader('Cache-Control', STATIC_CACHE_CONTROL);
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Surrogate-Control', 'no-store');
+    }
+
+    next();
+});
+
+app.use(express.static(path.join(__dirname, 'public'), {
+    etag: false,
+    lastModified: false,
+    maxAge: 0
+}));
 
 app.get('/api/health', (req, res) => {
-    res.json({ ok: true, timestamp: new Date().toISOString() });
+    res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        appVersion,
+        dbName: mongoose.connection?.name || '',
+        dbHost: mongoose.connection?.host || '',
+        readyState: mongoose.connection?.readyState ?? null
+    });
 });
 
 app.get('/api/config', (req, res) => {

@@ -1,6 +1,6 @@
 {
   "name": "agenda-peluqueria",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Sistema de gestion para peluqueria: login, turnos, caja y reportes",
   "main": "server.js",
   "scripts": {
