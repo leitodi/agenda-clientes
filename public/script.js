@@ -1304,7 +1304,7 @@ function renderCumpleanos() {
             ? `<a class="btn whatsapp-btn" href="${waLink}" target="_blank" rel="noopener noreferrer">WhatsApp</a>`
             : '-';
         const cortesCell = persona.tipo === 'Cliente' && persona.clienteId
-            ? `<button class="btn" type="button" data-action="open-cumple-historial" data-cliente-id="${escapeHtml(persona.clienteId)}" data-cliente-nombre="${escapeHtml(persona.nombreCompleto || '')}">Cantidad de cortes</button>`
+            ? `<button class="btn" type="button" data-action="open-cumple-historial" data-cliente-id="${escapeHtml(persona.clienteId)}" data-cliente-nombre="${escapeHtml(persona.nombreCompleto || '')}">Cantidad de atenciones</button>`
             : '-';
 
         return `
@@ -1481,9 +1481,9 @@ async function openCumpleHistorialModal(clienteId, clienteNombre) {
     const nombre = String(clienteNombre || '').trim() || 'Cliente';
 
     setCumpleHistorialModalContent({
-        title: `Cantidad de cortes - ${nombre}`,
+        title: `Cantidad de atenciones - ${nombre}`,
         summary: 'Cargando historial...',
-        html: '<p class="cliente-vacio">Cargando historial de cortes...</p>'
+        html: '<p class="cliente-vacio">Cargando historial de atenciones...</p>'
     });
     modal.classList.remove('hidden');
 
@@ -1510,11 +1510,11 @@ async function openCumpleHistorialModal(clienteId, clienteNombre) {
                     <td>${escapeHtml(formatDateLabel(fecha))}</td>
                 </tr>
             `).join('')
-            : '<tr><td colspan="2">No hay cortes registrados para este cliente.</td></tr>';
+            : '<tr><td colspan="2">No hay atenciones registradas para este cliente.</td></tr>';
 
         setCumpleHistorialModalContent({
-            title: `Cantidad de cortes - ${historial.nombre || nombre}`,
-            summary: `Total de cortes registrados: ${total}.`,
+            title: `Cantidad de atenciones - ${historial.nombre || nombre}`,
+            summary: `Total de atenciones registradas: ${total}.`,
             html: `
                 <div class="cumple-historial-total">
                     <span>Total</span>
@@ -1542,7 +1542,7 @@ async function openCumpleHistorialModal(clienteId, clienteNombre) {
         }
 
         setCumpleHistorialModalContent({
-            title: `Cantidad de cortes - ${nombre}`,
+            title: `Cantidad de atenciones - ${nombre}`,
             summary: 'No se pudo cargar el historial.',
             html: `<p class="cliente-vacio">${escapeHtml(error.message || 'No se pudo cargar el historial.')}</p>`
         });
