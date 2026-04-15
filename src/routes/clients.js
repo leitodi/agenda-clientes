@@ -114,7 +114,7 @@ async function getAttendanceHistoryByClient(normalizedName) {
         return [];
     }
 
-    return Attendance.aggregate([
+    const rows = await Attendance.aggregate([
         {
             $match: {
                 cliente: { $exists: true, $ne: '' }
@@ -140,10 +140,29 @@ async function getAttendanceHistoryByClient(normalizedName) {
         {
             $project: {
                 _id: 1,
-                fecha: 1
+                fecha: 1,
+                servicioNombre: 1,
+                peluqueroId: '$peluquero'
             }
         }
     ]);
+
+    const peluqueroIds = rows
+        .map((row) => String(row.peluqueroId || '').trim())
+        .filter(Boolean);
+
+    const peluqueros = peluqueroIds.length
+        ? await mongoose.model('Barber').find({ _id: { $in: peluqueroIds } }).select('nombre')
+        : [];
+
+    const peluquerosById = new Map(peluqueros.map((item) => [String(item._id), item.nombre]));
+
+    return rows.map((row) => ({
+        _id: row._id,
+        fecha: String(row.fecha || ''),
+        servicioNombre: String(row.servicioNombre || '').trim(),
+        peluqueroNombre: peluquerosById.get(String(row.peluqueroId || '')) || ''
+    }));
 }
 
 router.get('/', authRequired, async (req, res) => {
@@ -259,7 +278,8 @@ router.get('/:id/atenciones', authRequired, async (req, res) => {
         clienteId: cliente._id,
         nombre: cliente.nombre,
         total: atenciones.length,
-        fechas: atenciones.map((item) => String(item.fecha || '')).filter(Boolean)
+        fechas: atenciones.map((item) => String(item.fecha || '')).filter(Boolean),
+        atenciones
     });
 });
 

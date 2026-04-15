@@ -1499,18 +1499,32 @@ async function openCumpleHistorialModal(clienteId, clienteNombre) {
             return;
         }
 
+        const detalleAtenciones = Array.isArray(historial.atenciones)
+            ? historial.atenciones
+            : [];
         const fechas = Array.isArray(historial.fechas) ? historial.fechas : [];
         const total = Number.isFinite(Number(historial.total))
             ? Number(historial.total)
-            : fechas.length;
-        const rows = fechas.length
-            ? fechas.map((fecha, index) => `
+            : (detalleAtenciones.length || fechas.length);
+        const rows = detalleAtenciones.length
+            ? detalleAtenciones.map((atencion, index) => `
                 <tr>
                     <td>${index + 1}</td>
-                    <td>${escapeHtml(formatDateLabel(fecha))}</td>
+                    <td>${escapeHtml(formatDateLabel(atencion.fecha))}</td>
+                    <td>${escapeHtml(atencion.servicioNombre || '-')}</td>
+                    <td>${escapeHtml(atencion.peluqueroNombre || '-')}</td>
                 </tr>
             `).join('')
-            : '<tr><td colspan="2">No hay atenciones registradas para este cliente.</td></tr>';
+            : fechas.length
+                ? fechas.map((fecha, index) => `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${escapeHtml(formatDateLabel(fecha))}</td>
+                        <td>-</td>
+                        <td>-</td>
+                    </tr>
+                `).join('')
+                : '<tr><td colspan="4">No hay atenciones registradas para este cliente.</td></tr>';
 
         setCumpleHistorialModalContent({
             title: `Cantidad de atenciones - ${historial.nombre || nombre}`,
@@ -1522,6 +1536,8 @@ async function openCumpleHistorialModal(clienteId, clienteNombre) {
                             <tr>
                                 <th>#</th>
                                 <th>Fecha</th>
+                                <th>Servicio</th>
+                                <th>Peluquero</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
