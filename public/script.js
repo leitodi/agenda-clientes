@@ -2576,10 +2576,18 @@ async function cargarConfig() {
 
 async function cargarDashboard() {
     const fecha = $('dashboardDate').value;
-    const data = await apiFetch(`/api/dashboard?fecha=${fecha}`);
-    $('kpiTurnos').textContent = data.totalTurnos;
-    $('kpiAtenciones').textContent = data.totalAtenciones;
-    $('kpiPeluqueros').textContent = data.peluquerosActivos;
+
+    try {
+        const data = await apiFetch(`/api/dashboard?fecha=${fecha}`, { showLoading: false });
+        $('kpiTurnos').textContent = data.totalTurnos ?? 0;
+        $('kpiAtenciones').textContent = data.totalAtenciones ?? 0;
+        $('kpiPeluqueros').textContent = data.peluquerosActivos ?? 0;
+    } catch (error) {
+        $('kpiTurnos').textContent = '0';
+        $('kpiAtenciones').textContent = '0';
+        $('kpiPeluqueros').textContent = '0';
+        console.warn('No se pudo cargar dashboard:', error.message);
+    }
 }
 
 async function cargarPeluqueros() {
