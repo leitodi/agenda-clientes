@@ -9,6 +9,7 @@ const attendanceSchema = new mongoose.Schema(
     {
         fecha: { type: String, required: true },
         cliente: { type: String, default: '', trim: true, set: toUpperTrimmed },
+        clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', default: null },
         servicioNombre: { type: String, default: '', trim: true, set: toUpperTrimmed },
         servicioId: { type: mongoose.Schema.Types.ObjectId, ref: 'Service' },
         formaPago: { type: String, enum: ['efectivo', 'transferencia', 'tarjeta'], default: 'efectivo', required: true },
@@ -24,5 +25,6 @@ const attendanceSchema = new mongoose.Schema(
 );
 
 attendanceSchema.index({ fecha: 1, peluquero: 1 });
+attendanceSchema.index({ clientId: 1, fecha: -1 });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);

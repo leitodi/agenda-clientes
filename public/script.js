@@ -3373,13 +3373,16 @@ function attachEvents() {
                 throw new Error('Debes seleccionar un servicio');
             }
 
+            const clienteNombre = $('cajaCliente').value.trim();
+            const clienteCoincidente = findClienteByNombre(clienteNombre);
             const atencion = await apiFetch('/api/atenciones', {
                 method: 'POST',
                 body: {
                     fecha: $('cajaFecha').value,
                     horaReferencia: getCurrentClockLocal(),
                     peluqueroId: $('cajaPeluquero').value,
-                    cliente: $('cajaCliente').value.trim(),
+                    cliente: clienteCoincidente?.nombre || clienteNombre,
+                    clienteId: clienteCoincidente?._id || null,
                     formaPago: $('cajaFormaPago').value,
                     servicioId
                 }

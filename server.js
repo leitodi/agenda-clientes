@@ -111,6 +111,10 @@ function toUpperTrimmed(value) {
     return text ? text.toUpperCase() : '';
 }
 
+function normalizeName(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 async function migrateUppercaseField(model, field, label) {
     try {
         const docs = await model.find({
@@ -154,6 +158,58 @@ async function ensureUppercaseData() {
     await migrateUppercaseField(Attendance, 'servicioNombre', 'atenciones.servicioNombre');
 }
 
+async function ensureAttendanceClientLinks() {
+    try {
+        const clients = await Client.find({
+            nombreNormalizado: { $exists: true, $ne: '' }
+        }).select('_id nombreNormalizado');
+
+        const clientIdsByName = new Map();
+        clients.forEach((client) => {
+            const key = normalizeName(client.nombreNormalizado);
+            if (!key) {
+                return;
+            }
+
+            const sameNameClients = clientIdsByName.get(key) || [];
+            sameNameClients.push(client._id);
+            clientIdsByName.set(key, sameNameClients);
+        });
+
+        const attendances = await Attendance.find({
+            $or: [
+                { clientId: { $exists: false } },
+                { clientId: null }
+            ],
+            cliente: { $exists: true, $ne: '' }
+        }).select('_id cliente');
+
+        const operations = attendances
+            .map((attendance) => {
+                const key = normalizeName(attendance.cliente);
+                const matchedClientIds = clientIdsByName.get(key) || [];
+                if (matchedClientIds.length !== 1) {
+                    return null;
+                }
+
+                return {
+                    updateOne: {
+                        filter: { _id: attendance._id },
+                        update: { $set: { clientId: matchedClientIds[0] } }
+                    }
+                };
+            })
+            .filter(Boolean);
+
+        if (operations.length) {
+            await Attendance.bulkWrite(operations);
+            console.log(`Atenciones vinculadas a clientes por nombre: ${operations.length}`);
+        }
+    } catch (error) {
+        console.warn('No se pudieron vincular atenciones con clientes:', error.message);
+    }
+}
+
 async function startServer() {
     try {
         await mongoose.connect(MONGODB_URI);
@@ -162,6 +218,7 @@ async function startServer() {
         await ensureClientIndexes();
         await ensureSeedData();
         await ensureUppercaseData();
+        await ensureAttendanceClientLinks();
 
         app.listen(PORT, () => {
             console.log(`Servidor listo en http://localhost:${PORT}`);

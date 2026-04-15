@@ -118,6 +118,7 @@ router.post('/', authRequired, async (req, res) => {
         horaReferencia,
         peluqueroId,
         cliente,
+        clienteId,
         formaPago,
         montoCobrado,
         servicioId
@@ -158,11 +159,31 @@ router.post('/', authRequired, async (req, res) => {
         return res.status(404).json({ error: 'Peluquero no encontrado' });
     }
 
+    const clienteIdNormalizado = String(clienteId || '').trim();
+    if (clienteIdNormalizado && !/^[a-fA-F0-9]{24}$/.test(clienteIdNormalizado)) {
+        return res.status(400).json({ error: 'Cliente invalido' });
+    }
+
+    const clienteNombreIngresado = String(cliente || '').trim();
+    let clienteExistente = null;
+
+    if (clienteIdNormalizado) {
+        clienteExistente = await Client.findById(clienteIdNormalizado);
+        if (!clienteExistente) {
+            return res.status(404).json({ error: 'Cliente no encontrado' });
+        }
+    } else if (clienteNombreIngresado) {
+        const clienteNormalizado = normalizeName(clienteNombreIngresado);
+        clienteExistente = await Client.findOne({ nombreNormalizado: clienteNormalizado });
+    }
+
+    const clienteNombreFinal = String(clienteExistente?.nombre || clienteNombreIngresado).trim();
     const comisionGanada = Number(((monto * barber.porcentajeComision) / 100).toFixed(2));
 
     const atencion = await Attendance.create({
         fecha,
-        cliente: String(cliente || '').trim(),
+        cliente: clienteNombreFinal,
+        clientId: clienteExistente?._id || null,
         servicioNombre,
         servicioId: servicio?._id || undefined,
         formaPago: formaPagoNormalizada,
@@ -173,26 +194,19 @@ router.post('/', authRequired, async (req, res) => {
         registradoPor: req.user.id
     });
 
-    const clienteNombre = String(cliente || '').trim();
-    let clienteExistente = null;
-    if (clienteNombre) {
-        const clienteNormalizado = normalizeName(clienteNombre);
-        clienteExistente = await Client.findOne({ nombreNormalizado: clienteNormalizado });
-
-        if (clienteExistente) {
-            const fechaActual = String(clienteExistente.ultimaAtencion || '').trim();
-            if (!fechaActual || fecha >= fechaActual) {
-                clienteExistente.ultimaAtencion = fecha;
-                clienteExistente.ultimaAtencionPeluquero = String(barber.nombre || '').trim();
-                await clienteExistente.save();
-            }
+    if (clienteExistente) {
+        const fechaActual = String(clienteExistente.ultimaAtencion || '').trim();
+        if (!fechaActual || fecha >= fechaActual) {
+            clienteExistente.ultimaAtencion = fecha;
+            clienteExistente.ultimaAtencionPeluquero = String(barber.nombre || '').trim();
+            await clienteExistente.save();
         }
     }
 
     const turnoAtendido = await marcarTurnoAtendidoSiCorresponde({
         fecha,
         horaReferencia,
-        clienteNombre,
+        clienteNombre: clienteNombreFinal,
         clienteId: clienteExistente?._id || null
     });
 

@@ -15,6 +15,19 @@ function normalizeNameForAttendanceMatch(value) {
     return normalizeName(value).replace(/\s+/g, '');
 }
 
+function getClientComparableName(client) {
+    return String(client?.nombre || client?.nombreNormalizado || '').trim();
+}
+
+function getClientAttendanceKey(client) {
+    const clientId = String(client?._id || '').trim();
+    if (clientId) {
+        return clientId;
+    }
+
+    return normalizeNameForAttendanceMatch(getClientComparableName(client));
+}
+
 function buildAttendanceComparableExpression(fieldPath) {
     return {
         $replaceAll: {
@@ -64,83 +77,45 @@ function normalizeOptionalBirthday(value) {
     return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
 }
 
-async function getLatestAttendanceByClient(normalizedNames) {
-    const validNames = Array.from(new Set(
-        (normalizedNames || [])
-            .map((item) => normalizeNameForAttendanceMatch(item))
-            .filter(Boolean)
-    ));
+async function getAttendanceRowsByClient(clients) {
+    const validClients = (clients || [])
+        .map((client) => ({
+            key: getClientAttendanceKey(client),
+            clientId: String(client?._id || '').trim(),
+            comparableName: normalizeNameForAttendanceMatch(getClientComparableName(client))
+        }))
+        .filter((client) => client.key);
 
-    if (!validNames.length) {
+    if (!validClients.length) {
         return new Map();
     }
 
-    const rows = await Attendance.aggregate([
-        {
-            $match: {
-                cliente: { $exists: true, $ne: '' }
-            }
-        },
-        {
-            $addFields: {
-                clienteNormalizado: {
-                    $cond: [
-                        { $ifNull: ['$cliente', false] },
-                        buildAttendanceComparableExpression('$cliente'),
-                        ''
-                    ]
-                }
-            }
-        },
-        {
-            $match: {
-                clienteNormalizado: { $in: validNames }
-            }
-        },
-        {
-            $sort: { fecha: -1, createdAt: -1 }
-        },
-        {
-            $group: {
-                _id: '$clienteNormalizado',
-                fecha: { $first: '$fecha' },
-                peluqueroId: { $first: '$peluquero' }
-            }
-        }
-    ]);
+    const validClientIds = Array.from(new Set(
+        validClients
+            .map((client) => client.clientId)
+            .filter((clientId) => mongoose.Types.ObjectId.isValid(clientId))
+    )).map((clientId) => new mongoose.Types.ObjectId(clientId));
 
-    const peluqueroIds = rows
-        .map((row) => String(row.peluqueroId || '').trim())
-        .filter(Boolean);
+    const validNames = Array.from(new Set(
+        validClients
+            .map((client) => client.comparableName)
+            .filter(Boolean)
+    ));
 
-    const peluqueros = peluqueroIds.length
-        ? await mongoose.model('Barber').find({ _id: { $in: peluqueroIds } }).select('nombre')
-        : [];
+    const attendanceFilters = [];
+    if (validClientIds.length) {
+        attendanceFilters.push({ clientId: { $in: validClientIds } });
+    }
+    if (validNames.length) {
+        attendanceFilters.push({ clienteNormalizado: { $in: validNames } });
+    }
 
-    const peluquerosById = new Map(peluqueros.map((item) => [String(item._id), item.nombre]));
-
-    return new Map(rows.map((row) => [
-        row._id,
-        {
-            ultimaAtencion: String(row.fecha || ''),
-            ultimaAtencionPeluquero: peluquerosById.get(String(row.peluqueroId || '')) || ''
-        }
-    ]));
-}
-
-async function getAttendanceHistoryByClient(normalizedName) {
-    const validName = normalizeNameForAttendanceMatch(normalizedName);
-    if (!validName) {
-        return [];
+    if (!attendanceFilters.length) {
+        return new Map(validClients.map((client) => [client.key, []]));
     }
 
     const rows = await Attendance.aggregate([
         {
-            $match: {
-                cliente: { $exists: true, $ne: '' }
-            }
-        },
-        {
             $addFields: {
                 clienteNormalizado: {
                     $cond: [
@@ -148,12 +123,19 @@ async function getAttendanceHistoryByClient(normalizedName) {
                         buildAttendanceComparableExpression('$cliente'),
                         ''
                     ]
+                },
+                clientIdTexto: {
+                    $cond: [
+                        { $ifNull: ['$clientId', false] },
+                        { $toString: '$clientId' },
+                        ''
+                    ]
                 }
             }
         },
         {
             $match: {
-                clienteNormalizado: validName
+                $or: attendanceFilters
             }
         },
         {
@@ -164,10 +146,92 @@ async function getAttendanceHistoryByClient(normalizedName) {
                 _id: 1,
                 fecha: 1,
                 servicioNombre: 1,
-                peluqueroId: '$peluquero'
+                peluqueroId: '$peluquero',
+                clienteNormalizado: 1,
+                clientIdTexto: 1
             }
         }
     ]);
+
+    const rowsByClient = new Map(validClients.map((client) => [client.key, []]));
+    const clientsById = new Map(
+        validClients
+            .filter((client) => client.clientId)
+            .map((client) => [client.clientId, client])
+    );
+    const clientsByName = new Map();
+
+    validClients.forEach((client) => {
+        if (!client.comparableName) {
+            return;
+        }
+
+        const sameNameClients = clientsByName.get(client.comparableName) || [];
+        sameNameClients.push(client);
+        clientsByName.set(client.comparableName, sameNameClients);
+    });
+
+    rows.forEach((row) => {
+        const rowClientId = String(row.clientIdTexto || '').trim();
+        const rowName = String(row.clienteNormalizado || '').trim();
+
+        if (rowClientId && clientsById.has(rowClientId)) {
+            rowsByClient.get(clientsById.get(rowClientId).key)?.push(row);
+            return;
+        }
+
+        const matchedClients = clientsByName.get(rowName) || [];
+        if (matchedClients.length !== 1) {
+            return;
+        }
+
+        rowsByClient.get(matchedClients[0].key)?.push(row);
+    });
+
+    return rowsByClient;
+}
+
+async function getLatestAttendanceByClient(clients) {
+    const rowsByClient = await getAttendanceRowsByClient(clients);
+    const latestRows = Array.from(rowsByClient.values())
+        .map((rows) => rows[0])
+        .filter(Boolean);
+
+    const peluqueroIds = latestRows
+        .map((row) => String(row.peluqueroId || '').trim())
+        .filter(Boolean);
+
+    const peluqueros = peluqueroIds.length
+        ? await mongoose.model('Barber').find({ _id: { $in: peluqueroIds } }).select('nombre')
+        : [];
+
+    const peluquerosById = new Map(peluqueros.map((item) => [String(item._id), item.nombre]));
+
+    return new Map((clients || []).map((client) => {
+        const key = getClientAttendanceKey(client);
+        const row = rowsByClient.get(key)?.[0] || null;
+        if (!row) {
+            return [key, null];
+        }
+
+        return [
+            key,
+            {
+                ultimaAtencion: String(row.fecha || ''),
+                ultimaAtencionPeluquero: peluquerosById.get(String(row.peluqueroId || '')) || ''
+            }
+        ];
+    }));
+}
+
+async function getAttendanceHistoryByClient(client) {
+    const key = getClientAttendanceKey(client);
+    if (!key) {
+        return [];
+    }
+
+    const rowsByClient = await getAttendanceRowsByClient([client]);
+    const rows = rowsByClient.get(key) || [];
 
     const peluqueroIds = rows
         .map((row) => String(row.peluqueroId || '').trim())
@@ -191,13 +255,10 @@ router.get('/', authRequired, async (req, res) => {
     const clientes = await Client.find()
         .select('-foto1 -foto2')
         .sort({ createdAt: -1, _id: -1 });
-    const latestAttendanceByClient = await getLatestAttendanceByClient(
-        clientes.map((item) => item.nombre || item.nombreNormalizado)
-    );
+    const latestAttendanceByClient = await getLatestAttendanceByClient(clientes);
 
     const response = clientes.map((cliente) => {
-        const comparableName = cliente.nombre || cliente.nombreNormalizado;
-        const latestAttendance = latestAttendanceByClient.get(normalizeNameForAttendanceMatch(comparableName));
+        const latestAttendance = latestAttendanceByClient.get(getClientAttendanceKey(cliente));
         if (!latestAttendance) {
             return cliente.toObject();
         }
@@ -273,9 +334,8 @@ router.get('/:id', authRequired, async (req, res) => {
         return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    const comparableName = cliente.nombre || cliente.nombreNormalizado;
-    const latestAttendanceByClient = await getLatestAttendanceByClient([comparableName]);
-    const latestAttendance = latestAttendanceByClient.get(normalizeNameForAttendanceMatch(comparableName));
+    const latestAttendanceByClient = await getLatestAttendanceByClient([cliente]);
+    const latestAttendance = latestAttendanceByClient.get(getClientAttendanceKey(cliente));
 
     if (!latestAttendance) {
         return res.json(cliente);
@@ -298,7 +358,7 @@ router.get('/:id/atenciones', authRequired, async (req, res) => {
         return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    const atenciones = await getAttendanceHistoryByClient(cliente.nombre || cliente.nombreNormalizado);
+    const atenciones = await getAttendanceHistoryByClient(cliente);
 
     return res.json({
         clienteId: cliente._id,
