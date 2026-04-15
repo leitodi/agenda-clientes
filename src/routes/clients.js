@@ -46,6 +46,73 @@ function normalizeOptionalBirthday(value) {
     return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
 }
 
+function scoreClientCompleteness(cliente) {
+    let score = 0;
+
+    if (String(cliente?.telefono || '').trim()) {
+        score += 3;
+    }
+
+    if (String(cliente?.instagram || '').trim()) {
+        score += 2;
+    }
+
+    if (String(cliente?.fechaCumpleanos || '').trim()) {
+        score += 2;
+    }
+
+    if (String(cliente?.foto1 || '').trim()) {
+        score += 1;
+    }
+
+    if (String(cliente?.foto2 || '').trim()) {
+        score += 1;
+    }
+
+    if (String(cliente?.ultimaAtencion || '').trim()) {
+        score += 1;
+    }
+
+    return score;
+}
+
+function pickPreferredClient(current, candidate) {
+    if (!current) {
+        return candidate;
+    }
+
+    const currentScore = scoreClientCompleteness(current);
+    const candidateScore = scoreClientCompleteness(candidate);
+
+    if (candidateScore !== currentScore) {
+        return candidateScore > currentScore ? candidate : current;
+    }
+
+    const currentCreatedAt = new Date(current.createdAt || 0).getTime();
+    const candidateCreatedAt = new Date(candidate.createdAt || 0).getTime();
+    return candidateCreatedAt >= currentCreatedAt ? candidate : current;
+}
+
+function dedupeClientsByName(clientes) {
+    const byName = new Map();
+
+    for (const cliente of clientes || []) {
+        const key = String(cliente?.nombreNormalizado || '').trim();
+        if (!key) {
+            continue;
+        }
+
+        const preferred = pickPreferredClient(byName.get(key), cliente);
+        byName.set(key, preferred);
+    }
+
+    return Array.from(byName.values()).sort((a, b) => {
+        const aCreatedAt = new Date(a.createdAt || 0).getTime();
+        const bCreatedAt = new Date(b.createdAt || 0).getTime();
+        return bCreatedAt - aCreatedAt;
+    });
+}
+
 async function getLatestAttendanceByClient(normalizedNames) {
     const validNames = Array.from(new Set(
         (normalizedNames || [])
@@ -150,16 +217,17 @@ router.get('/', authRequired, async (req, res) => {
     const clientes = await Client.find()
         .select('-foto1 -foto2')
         .sort({ createdAt: -1, _id: -1 });
-    const latestAttendanceByClient = await getLatestAttendanceByClient(clientes.map((item) => item.nombreNormalizado));
+    const clientesUnicos = dedupeClientsByName(clientes.map((item) => item.toObject()));
+    const latestAttendanceByClient = await getLatestAttendanceByClient(clientesUnicos.map((item) => item.nombreNormalizado));
 
-    const response = clientes.map((cliente) => {
+    const response = clientesUnicos.map((cliente) => {
         const latestAttendance = latestAttendanceByClient.get(cliente.nombreNormalizado);
         if (!latestAttendance) {
             return cliente;
         }
 
         return {
-            ...cliente.toObject(),
+            ...cliente,
             ultimaAtencion: latestAttendance.ultimaAtencion,
             ultimaAtencionPeluquero: latestAttendance.ultimaAtencionPeluquero
         };
@@ -187,9 +255,21 @@ router.post('/', authRequired, async (req, res) => {
     }
 
     const nombreNormalizado = normalizeName(fullName);
-    const existing = telefonoNormalizado ? await Client.findOne({ telefonoNormalizado }) : null;
+    const existingByPhone = telefonoNormalizado ? await Client.findOne({ telefonoNormalizado }) : null;
+    const existingByName = await Client.findOne({ nombreNormalizado });
+
+    if (
+        existingByPhone
+        && existingByName
+        && String(existingByPhone._id) !== String(existingByName._id)
+    ) {
+        return res.status(409).json({ error: 'Ya existen clientes duplicados con ese nombre o telefono. Revisa los registros antes de guardar.' });
+    }
+
+    const existing = existingByPhone || existingByName;
     if (existing) {
         existing.nombre = fullName;
+        existing.nombreNormalizado = nombreNormalizado;
         existing.telefono = telefonoRaw;
         existing.telefonoNormalizado = telefonoNormalizado;
         existing.instagram = String(instagram || '').trim();
@@ -263,8 +343,6 @@ router.get('/:id/atenciones', authRequired, async (req, res) => {
 
 router.put('/:id', authRequired, async (req, res) => {
     const { nombre, apellido, telefono, instagram, fechaCumpleanos, foto1, foto2 } = req.body;
-
-    debugger;
     const cliente = await Client.findById(req.params.id);
     if (!cliente) {
         return res.status(404).json({ error: 'Cliente no encontrado' });
@@ -285,7 +363,6 @@ router.put('/:id', authRequired, async (req, res) => {
         return res.status(400).json({ error: error.message });
     }
 
-    debugger;
     if (telefonoNormalizado) {
         const existing = await Client.findOne({
             telefonoNormalizado,
@@ -295,6 +372,15 @@ router.put('/:id', authRequired, async (req, res) => {
         if (existing) {
             return res.status(409).json({ error: 'Ya existe otro cliente con ese telefono' });
         }
+    }
+
+    const nombreDuplicado = await Client.findOne({
+        nombreNormalizado: normalizeName(fullName),
+        _id: { $ne: cliente._id }
+    });
+
+    if (nombreDuplicado) {
+        return res.status(409).json({ error: 'Ya existe otro cliente con ese nombre' });
     }
 
     cliente.nombre = fullName;

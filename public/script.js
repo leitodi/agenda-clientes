@@ -1516,12 +1516,8 @@ async function openCumpleHistorialModal(clienteId, clienteNombre) {
             title: `Cantidad de atenciones - ${historial.nombre || nombre}`,
             summary: `Total de atenciones registradas: ${total}.`,
             html: `
-                <div class="cumple-historial-total">
-                    <span>Total</span>
-                    <strong>${escapeHtml(String(total))}</strong>
-                </div>
-                <div class="table-wrap">
-                    <table>
+                <div class="table-wrap cumple-historial-table-wrap">
+                    <table class="cumple-historial-table">
                         <thead>
                             <tr>
                                 <th>#</th>

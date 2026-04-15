@@ -1309,21 +1309,13 @@ tbody tr:hover td {
     gap: 16px;
 }
 
-.cumple-historial-total {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    width: fit-content;
-    padding: 10px 14px;
-    border-radius: 14px;
-    border: 1px solid rgba(212, 175, 55, 0.18);
-    background: rgba(212, 175, 55, 0.08);
-    color: var(--text-soft);
+.cumple-historial-table-wrap {
+    overflow-x: hidden;
 }
 
-.cumple-historial-total strong {
-    color: var(--gold);
-    font-size: 1.15rem;
+.cumple-historial-table {
+    min-width: 0;
+    width: 100%;
 }
 
 .hidden {
