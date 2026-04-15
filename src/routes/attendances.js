@@ -6,6 +6,7 @@ const Service = require('../models/Service');
 const Client = require('../models/Client');
 const { authRequired } = require('../middleware/auth');
 const { parseTimeToMinutes } = require('../utils/time');
+const { getLegacyAttendancesByDateRange } = require('../utils/legacyAttendanceStore');
 
 const router = express.Router();
 const TURNO_CAJA_TOLERANCIA_MINUTOS = 120;
@@ -104,10 +105,14 @@ router.get('/', authRequired, async (req, res) => {
         };
     }
 
-    const atenciones = await Attendance.find(filter)
+    let atenciones = await Attendance.find(filter)
         .populate('peluquero', 'nombre porcentajeComision')
         .populate('servicioId', 'nombre precio')
         .sort({ fecha: -1, createdAt: -1 });
+
+    if (!atenciones.length) {
+        atenciones = await getLegacyAttendancesByDateRange({ desde, hasta, peluqueroId });
+    }
 
     return res.json(atenciones);
 });

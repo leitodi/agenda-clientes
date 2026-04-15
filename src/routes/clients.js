@@ -4,6 +4,7 @@ const Client = require('../models/Client');
 const Appointment = require('../models/Appointment');
 const Attendance = require('../models/Attendance');
 const { authRequired } = require('../middleware/auth');
+const { getLegacyAttendanceRowsByClient } = require('../utils/legacyAttendanceStore');
 
 const router = express.Router();
 
@@ -188,6 +189,18 @@ async function getAttendanceRowsByClient(clients) {
         rowsByClient.get(matchedClients[0].key)?.push(row);
     });
 
+    const missingClients = (clients || []).filter((client) => !(rowsByClient.get(getClientAttendanceKey(client)) || []).length);
+    if (missingClients.length) {
+        const legacyRowsByClient = await getLegacyAttendanceRowsByClient(missingClients);
+        legacyRowsByClient.forEach((legacyRows, key) => {
+            if (!legacyRows.length || (rowsByClient.get(key) || []).length) {
+                return;
+            }
+
+            rowsByClient.set(key, legacyRows);
+        });
+    }
+
     return rowsByClient;
 }
 
@@ -353,7 +366,7 @@ router.get('/:id/atenciones', authRequired, async (req, res) => {
         return res.status(400).json({ error: 'Cliente invalido' });
     }
 
-    const cliente = await Client.findById(req.params.id).select('nombre nombreNormalizado');
+    const cliente = await Client.findById(req.params.id).select('nombre nombreNormalizado telefonoNormalizado');
     if (!cliente) {
         return res.status(404).json({ error: 'Cliente no encontrado' });
     }
