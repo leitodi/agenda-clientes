@@ -8,12 +8,99 @@ function normalizeNameForAttendanceMatch(value) {
     return normalizeName(value).replace(/\s+/g, '');
 }
 
+function normalizePhone(value) {
+    return String(value || '').replace(/\D/g, '').trim();
+}
+
+function normalizeOptionalBirthday(value) {
+    const text = String(value || '').trim();
+    if (!text) {
+        return '';
+    }
+
+    let day;
+    let month;
+    let year;
+
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
+        [day, month, year] = text.split('/').map(Number);
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        [year, month, day] = text.split('-').map(Number);
+    } else {
+        return '';
+    }
+
+    const date = new Date(year, month - 1, day);
+    if (
+        Number.isNaN(date.getTime())
+        || date.getFullYear() !== year
+        || date.getMonth() !== month - 1
+        || date.getDate() !== day
+    ) {
+        return '';
+    }
+
+    return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+}
+
 async function getLegacyConnection() {
     if (mongoose.connection.readyState !== 1) {
         return null;
     }
 
     return mongoose.connection.useDb('agenda_clientes', { useCache: true });
+}
+
+async function getLegacyBirthdayData() {
+    const connection = await getLegacyConnection();
+    if (!connection) {
+        return {
+            clientes: [],
+            peluqueros: []
+        };
+    }
+
+    const [legacyClients, legacyBarbers] = await Promise.all([
+        connection.collection('clients')
+            .find({ fechaCumpleanos: { $exists: true, $ne: '' } }, {
+                projection: {
+                    nombre: 1,
+                    telefono: 1,
+                    telefonoNormalizado: 1,
+                    fechaCumpleanos: 1
+                }
+            })
+            .toArray(),
+        connection.collection('barbers')
+            .find({ fechaCumpleanos: { $exists: true, $ne: '' } }, {
+                projection: {
+                    nombre: 1,
+                    telefono: 1,
+                    fechaCumpleanos: 1
+                }
+            })
+            .toArray()
+    ]);
+
+    return {
+        clientes: legacyClients
+            .map((doc) => ({
+                _id: String(doc._id || '').trim(),
+                nombre: String(doc.nombre || '').trim(),
+                telefono: String(doc.telefono || '').trim(),
+                telefonoNormalizado: normalizePhone(doc.telefonoNormalizado || doc.telefono),
+                fechaCumpleanos: normalizeOptionalBirthday(doc.fechaCumpleanos)
+            }))
+            .filter((doc) => doc.nombre && doc.fechaCumpleanos),
+        peluqueros: legacyBarbers
+            .map((doc) => ({
+                _id: String(doc._id || '').trim(),
+                nombre: String(doc.nombre || '').trim(),
+                telefono: String(doc.telefono || '').trim(),
+                fechaCumpleanos: normalizeOptionalBirthday(doc.fechaCumpleanos)
+            }))
+            .filter((doc) => doc.nombre && doc.fechaCumpleanos)
+    };
 }
 
 async function getLegacyBarberNamesById(barberIds) {
@@ -234,5 +321,6 @@ async function getLegacyAttendanceRowsByClient(clients) {
 
 module.exports = {
     getLegacyAttendancesByDateRange,
-    getLegacyAttendanceRowsByClient
+    getLegacyAttendanceRowsByClient,
+    getLegacyBirthdayData
 };

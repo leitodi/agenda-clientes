@@ -16,9 +16,11 @@ const state = {
         corte_barba: { label: 'Corte + barba', durationMinutes: 45 }
     },
     peluqueros: [],
+    cumplePeluqueros: [],
     turnos: [],
     turnosDelMomento: [],
     clientes: [],
+    cumpleClientes: [],
     serviciosCaja: [],
     selectedClienteId: null,
     selectedTurnoClienteId: null,
@@ -457,10 +459,7 @@ async function ensureTabData(tabName, force = false) {
     } else if (tabName === 'clientes') {
         await cargarClientes();
     } else if (tabName === 'cumpleanos') {
-        await Promise.all([
-            cargarClientes(),
-            cargarPeluqueros()
-        ]);
+        await cargarCumpleanos();
     } else if (tabName === 'peluqueros') {
         await cargarPeluqueros();
     } else if (tabName === 'servicios') {
@@ -1089,7 +1088,7 @@ function getBirthdayEntriesForDate(dateString) {
         return [];
     }
 
-    const clientes = state.clientes.filter((cliente) => {
+    const clientes = state.cumpleClientes.filter((cliente) => {
         const cumple = getMonthDayFromDateString(cliente.fechaCumpleanos);
         return cumple && cumple.month === target.month && cumple.day === target.day;
     }).map((cliente) => ({
@@ -1097,11 +1096,12 @@ function getBirthdayEntriesForDate(dateString) {
         tipo: 'Cliente',
         tipoClass: 'cumple-badge-cliente',
         clienteId: cliente._id || '',
+        historialDisponible: Boolean(cliente.historialDisponible),
         nombreCompleto: cliente.nombre || '',
         telefono: String(cliente.telefono || '').trim()
     }));
 
-    const personal = state.peluqueros.filter((peluquero) => {
+    const personal = state.cumplePeluqueros.filter((peluquero) => {
         const cumple = getMonthDayFromDateString(peluquero.fechaCumpleanos);
         return cumple && cumple.month === target.month && cumple.day === target.day;
     }).map((peluquero) => ({
@@ -1303,7 +1303,7 @@ function renderCumpleanos() {
         const waCell = waLink
             ? `<a class="btn whatsapp-btn" href="${waLink}" target="_blank" rel="noopener noreferrer">WhatsApp</a>`
             : '-';
-        const cortesCell = persona.tipo === 'Cliente' && persona.clienteId
+        const cortesCell = persona.tipo === 'Cliente' && persona.clienteId && persona.historialDisponible
             ? `<button class="btn" type="button" data-action="open-cumple-historial" data-cliente-id="${escapeHtml(persona.clienteId)}" data-cliente-nombre="${escapeHtml(persona.nombreCompleto || '')}">Cantidad de atenciones</button>`
             : '-';
 
@@ -2595,6 +2595,12 @@ async function cargarPeluqueros() {
     completarSelectPeluqueros();
     renderPeluquerosTable();
     renderCumpleanos();
+
+    if (state.loadedTabs.cumpleanos) {
+        cargarCumpleanos().catch((error) => {
+            console.warn('No se pudo refrescar cumpleanos tras cargar peluqueros:', error.message);
+        });
+    }
 }
 
 async function cargarServiciosCaja() {
@@ -2622,6 +2628,19 @@ async function cargarClientes() {
         const clienteTurno = state.clientes.find((item) => item._id === state.selectedTurnoClienteId) || null;
         updateTurnoClienteInfo(clienteTurno);
     }
+
+    if (state.loadedTabs.cumpleanos) {
+        cargarCumpleanos().catch((error) => {
+            console.warn('No se pudo refrescar cumpleanos tras cargar clientes:', error.message);
+        });
+    }
+}
+
+async function cargarCumpleanos() {
+    const data = await apiFetch('/api/dashboard/cumpleanos');
+    state.cumpleClientes = Array.isArray(data?.clientes) ? data.clientes : [];
+    state.cumplePeluqueros = Array.isArray(data?.peluqueros) ? data.peluqueros : [];
+    renderCumpleanos();
 }
 
 async function cargarTurnos() {
