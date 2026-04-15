@@ -8,7 +8,25 @@ const { authRequired } = require('../middleware/auth');
 const router = express.Router();
 
 function normalizeName(value) {
-    return String(value || '').trim().toLowerCase();
+    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizeNameForAttendanceMatch(value) {
+    return normalizeName(value).replace(/\s+/g, '');
+}
+
+function buildAttendanceComparableExpression(fieldPath) {
+    return {
+        $replaceAll: {
+            input: {
+                $toLower: {
+                    $trim: { input: fieldPath }
+                }
+            },
+            find: ' ',
+            replacement: ''
+        }
+    };
 }
 
 function normalizePhone(value) {
@@ -49,7 +67,7 @@ function normalizeOptionalBirthday(value) {
 async function getLatestAttendanceByClient(normalizedNames) {
     const validNames = Array.from(new Set(
         (normalizedNames || [])
-            .map((item) => String(item || '').trim().toLowerCase())
+            .map((item) => normalizeNameForAttendanceMatch(item))
             .filter(Boolean)
     ));
 
@@ -66,9 +84,11 @@ async function getLatestAttendanceByClient(normalizedNames) {
         {
             $addFields: {
                 clienteNormalizado: {
-                    $toLower: {
-                        $trim: { input: '$cliente' }
-                    }
+                    $cond: [
+                        { $ifNull: ['$cliente', false] },
+                        buildAttendanceComparableExpression('$cliente'),
+                        ''
+                    ]
                 }
             }
         },
@@ -109,7 +129,7 @@ async function getLatestAttendanceByClient(normalizedNames) {
 }
 
 async function getAttendanceHistoryByClient(normalizedName) {
-    const validName = normalizeName(normalizedName);
+    const validName = normalizeNameForAttendanceMatch(normalizedName);
     if (!validName) {
         return [];
     }
@@ -123,9 +143,11 @@ async function getAttendanceHistoryByClient(normalizedName) {
         {
             $addFields: {
                 clienteNormalizado: {
-                    $toLower: {
-                        $trim: { input: '$cliente' }
-                    }
+                    $cond: [
+                        { $ifNull: ['$cliente', false] },
+                        buildAttendanceComparableExpression('$cliente'),
+                        ''
+                    ]
                 }
             }
         },
@@ -169,10 +191,13 @@ router.get('/', authRequired, async (req, res) => {
     const clientes = await Client.find()
         .select('-foto1 -foto2')
         .sort({ createdAt: -1, _id: -1 });
-    const latestAttendanceByClient = await getLatestAttendanceByClient(clientes.map((item) => item.nombreNormalizado));
+    const latestAttendanceByClient = await getLatestAttendanceByClient(
+        clientes.map((item) => item.nombre || item.nombreNormalizado)
+    );
 
     const response = clientes.map((cliente) => {
-        const latestAttendance = latestAttendanceByClient.get(cliente.nombreNormalizado);
+        const comparableName = cliente.nombre || cliente.nombreNormalizado;
+        const latestAttendance = latestAttendanceByClient.get(normalizeNameForAttendanceMatch(comparableName));
         if (!latestAttendance) {
             return cliente.toObject();
         }
@@ -248,8 +273,9 @@ router.get('/:id', authRequired, async (req, res) => {
         return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    const latestAttendanceByClient = await getLatestAttendanceByClient([cliente.nombreNormalizado]);
-    const latestAttendance = latestAttendanceByClient.get(cliente.nombreNormalizado);
+    const comparableName = cliente.nombre || cliente.nombreNormalizado;
+    const latestAttendanceByClient = await getLatestAttendanceByClient([comparableName]);
+    const latestAttendance = latestAttendanceByClient.get(normalizeNameForAttendanceMatch(comparableName));
 
     if (!latestAttendance) {
         return res.json(cliente);
@@ -272,7 +298,7 @@ router.get('/:id/atenciones', authRequired, async (req, res) => {
         return res.status(404).json({ error: 'Cliente no encontrado' });
     }
 
-    const atenciones = await getAttendanceHistoryByClient(cliente.nombreNormalizado);
+    const atenciones = await getAttendanceHistoryByClient(cliente.nombre || cliente.nombreNormalizado);
 
     return res.json({
         clienteId: cliente._id,
