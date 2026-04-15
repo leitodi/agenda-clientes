@@ -1,7 +1,5 @@
 const mongoose = require('mongoose');
 
-let legacyConnectionPromise = null;
-
 function normalizeName(value) {
     return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -10,41 +8,12 @@ function normalizeNameForAttendanceMatch(value) {
     return normalizeName(value).replace(/\s+/g, '');
 }
 
-function buildLegacyMongoUri() {
-    const rawUri = String(process.env.MONGODB_URI || '').trim();
-    if (!rawUri) {
-        return '';
-    }
-
-    try {
-        const url = new URL(rawUri);
-        url.pathname = '/agenda_clientes';
-        return url.toString();
-    } catch (error) {
-        return rawUri.replace(/\/[^/?]+(\?|$)/, '/agenda_clientes$1');
-    }
-}
-
 async function getLegacyConnection() {
-    if (!legacyConnectionPromise) {
-        const uri = buildLegacyMongoUri();
-        if (!uri) {
-            return null;
-        }
-
-        const connection = mongoose.createConnection(uri, {
-            serverSelectionTimeoutMS: 10000
-        });
-
-        legacyConnectionPromise = connection.asPromise()
-            .then(() => connection)
-            .catch((error) => {
-                legacyConnectionPromise = null;
-                throw error;
-            });
+    if (mongoose.connection.readyState !== 1) {
+        return null;
     }
 
-    return legacyConnectionPromise;
+    return mongoose.connection.useDb('agenda_clientes', { useCache: true });
 }
 
 async function getLegacyBarberNamesById(barberIds) {
