@@ -1,12 +1,13 @@
 const express = require('express');
-const Service = require('../models/Service');
 const { authRequired, adminRequired } = require('../middleware/auth');
+const {
+    listServices,
+    createService,
+    updateService,
+    deleteService
+} = require('../utils/serviceStore');
 
 const router = express.Router();
-
-function normalizeName(value) {
-    return String(value || '').trim().toLowerCase();
-}
 
 function parsePrice(value) {
     const precio = Number(value);
@@ -25,7 +26,7 @@ function parseDuration(value) {
 }
 
 router.get('/', authRequired, async (req, res) => {
-    const servicios = await Service.find().sort({ nombre: 1 });
+    const servicios = await listServices();
     return res.json(servicios);
 });
 
@@ -38,12 +39,7 @@ router.post('/', authRequired, adminRequired, async (req, res) => {
 
         const precio = parsePrice(req.body?.precio);
         const duracionMinutos = parseDuration(req.body?.duracionMinutos);
-        const servicio = await Service.create({
-            nombre,
-            nombreNormalizado: normalizeName(nombre),
-            precio,
-            duracionMinutos
-        });
+        const servicio = await createService({ nombre, precio, duracionMinutos });
 
         return res.status(201).json(servicio);
     } catch (error) {
@@ -56,11 +52,6 @@ router.post('/', authRequired, adminRequired, async (req, res) => {
 
 router.put('/:id', authRequired, adminRequired, async (req, res) => {
     try {
-        const servicio = await Service.findById(req.params.id);
-        if (!servicio) {
-            return res.status(404).json({ error: 'Servicio no encontrado' });
-        }
-
         const nombre = String(req.body?.nombre || '').trim();
         if (!nombre) {
             return res.status(400).json({ error: 'El nombre del servicio es obligatorio' });
@@ -68,11 +59,10 @@ router.put('/:id', authRequired, adminRequired, async (req, res) => {
 
         const precio = parsePrice(req.body?.precio);
         const duracionMinutos = parseDuration(req.body?.duracionMinutos);
-        servicio.nombre = nombre;
-        servicio.nombreNormalizado = normalizeName(nombre);
-        servicio.precio = precio;
-        servicio.duracionMinutos = duracionMinutos;
-        await servicio.save();
+        const servicio = await updateService(req.params.id, { nombre, precio, duracionMinutos });
+        if (!servicio) {
+            return res.status(404).json({ error: 'Servicio no encontrado' });
+        }
 
         return res.json(servicio);
     } catch (error) {
@@ -84,7 +74,7 @@ router.put('/:id', authRequired, adminRequired, async (req, res) => {
 });
 
 router.delete('/:id', authRequired, adminRequired, async (req, res) => {
-    const deleted = await Service.findByIdAndDelete(req.params.id);
+    const deleted = await deleteService(req.params.id);
     if (!deleted) {
         return res.status(404).json({ error: 'Servicio no encontrado' });
     }

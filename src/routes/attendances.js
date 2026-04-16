@@ -2,11 +2,11 @@ const express = require('express');
 const Attendance = require('../models/Attendance');
 const Appointment = require('../models/Appointment');
 const Barber = require('../models/Barber');
-const Service = require('../models/Service');
 const Client = require('../models/Client');
 const { authRequired } = require('../middleware/auth');
 const { parseTimeToMinutes } = require('../utils/time');
 const { getLegacyAttendancesByDateRange } = require('../utils/legacyAttendanceStore');
+const { findServiceById } = require('../utils/serviceStore');
 
 const router = express.Router();
 const TURNO_CAJA_TOLERANCIA_MINUTOS = 120;
@@ -146,7 +146,7 @@ router.post('/', authRequired, async (req, res) => {
         if (!/^[a-fA-F0-9]{24}$/.test(String(servicioId))) {
             return res.status(400).json({ error: 'Servicio invalido' });
         }
-        servicio = await Service.findById(servicioId);
+        servicio = await findServiceById(servicioId);
         if (!servicio) {
             return res.status(404).json({ error: 'Servicio no encontrado' });
         }
@@ -190,7 +190,7 @@ router.post('/', authRequired, async (req, res) => {
         cliente: clienteNombreFinal,
         clientId: clienteExistente?._id || null,
         servicioNombre,
-        servicioId: servicio?._id || undefined,
+        servicioId: servicio?.source === 'primary' ? servicio._id : undefined,
         formaPago: formaPagoNormalizada,
         montoCobrado: monto,
         comisionPorcentaje: barber.porcentajeComision,

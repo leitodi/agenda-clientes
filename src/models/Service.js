@@ -19,4 +19,7 @@ const serviceSchema = new mongoose.Schema(
 
 serviceSchema.index({ nombreNormalizado: 1 }, { unique: true });
 
-module.exports = mongoose.model('Service', serviceSchema);
+const Service = mongoose.models.Service || mongoose.model('Service', serviceSchema);
+
+module.exports = Service;
+module.exports.serviceSchema = serviceSchema;

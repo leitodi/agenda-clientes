@@ -2,10 +2,10 @@ const express = require('express');
 const Appointment = require('../models/Appointment');
 const Barber = require('../models/Barber');
 const Client = require('../models/Client');
-const Service = require('../models/Service');
 const { authRequired, notAgendaRequired } = require('../middleware/auth');
 const { parseTimeToMinutes, minutesToTime, getDayOfWeek, getDayName } = require('../utils/time');
 const { getServiceDuration } = require('../utils/services');
+const { findServiceById } = require('../utils/serviceStore');
 
 const router = express.Router();
 const OPENING_MINUTES = 10 * 60;
@@ -73,7 +73,7 @@ async function resolverServicioTurno({ servicioId, servicioLegacy }) {
     const servicioIdFinal = String(servicioId || servicioLegacy || '').trim();
 
     if (/^[a-fA-F0-9]{24}$/.test(servicioIdFinal)) {
-        const servicio = await Service.findById(servicioIdFinal);
+        const servicio = await findServiceById(servicioIdFinal);
         if (!servicio) {
             throw new Error('Servicio no encontrado');
         }
@@ -85,7 +85,7 @@ async function resolverServicioTurno({ servicioId, servicioLegacy }) {
 
         return {
             servicio: servicio._id.toString(),
-            servicioId: servicio._id,
+            servicioId: servicio.source === 'primary' ? servicio._id : null,
             servicioNombre: servicio.nombre,
             duracionMinutos
         };
