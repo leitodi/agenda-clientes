@@ -26,7 +26,8 @@ const { SERVICE_TYPES } = require('./src/utils/services');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/agenda_peluqueria';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/agenda_clientes';
+const ACTIVE_DB_NAME = process.env.MONGODB_DB_NAME || 'agenda_clientes';
 const STATIC_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, proxy-revalidate';
 
 app.use(cors());
@@ -54,6 +55,7 @@ app.get('/api/health', (req, res) => {
         ok: true,
         timestamp: new Date().toISOString(),
         appVersion,
+        configuredDbName: ACTIVE_DB_NAME,
         dbName: mongoose.connection?.name || '',
         dbHost: mongoose.connection?.host || '',
         readyState: mongoose.connection?.readyState ?? null
@@ -236,8 +238,10 @@ async function ensureAttendanceClientLinks() {
 
 async function startServer() {
     try {
-        await mongoose.connect(MONGODB_URI);
-        console.log('Conectado a MongoDB');
+        await mongoose.connect(MONGODB_URI, {
+            dbName: ACTIVE_DB_NAME
+        });
+        console.log(`Conectado a MongoDB (${ACTIVE_DB_NAME})`);
 
         await ensureClientIndexes();
         await ensureSeedData();
