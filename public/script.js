@@ -56,6 +56,10 @@ function today() {
     return getLocalDateString();
 }
 
+function setCajaFechaDefault() {
+    $('cajaFecha').value = today();
+}
+
 function isAgendaRole() {
     return state.user?.role === 'agenda';
 }
@@ -486,6 +490,10 @@ async function ensureTabData(tabName, force = false) {
 async function activateTab(tabName, options = {}) {
     const { force = false } = options;
     setTab(tabName);
+
+    if (tabName === 'caja') {
+        setCajaFechaDefault();
+    }
 
     if (tabName === 'turnos') {
         startTurnosAhoraWatcher();
@@ -3415,6 +3423,7 @@ function attachEvents() {
                 }
             });
 
+            setCajaFechaDefault();
             $('cajaCliente').value = '';
             $('cajaFormaPago').value = 'efectivo';
             renderCajaServiciosSelect();
@@ -3612,7 +3621,7 @@ function setDefaultDates() {
     $('turnoFecha').value = turnoDefaultDate;
     $('turnoHora').value = '10:00';
     $('turnosFiltroFecha').value = value;
-    $('cajaFecha').value = value;
+    setCajaFechaDefault();
     setCurrentCumpleMonth(value.slice(0, 7));
     state.selectedCumpleDate = null;
     $('reporteFechaDia').value = value;
