@@ -1,6 +1,10 @@
 const express = require('express');
 const { authRequired, adminRequired } = require('../middleware/auth');
 const {
+    DEFAULT_SERVICE_WORK_TYPE,
+    isValidServiceWorkType
+} = require('../utils/serviceWorkTypes');
+const {
     listServices,
     createService,
     updateService,
@@ -25,6 +29,19 @@ function parseDuration(value) {
     return duracion;
 }
 
+function parseWorkType(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) {
+        return DEFAULT_SERVICE_WORK_TYPE;
+    }
+
+    if (!isValidServiceWorkType(normalized)) {
+        throw new Error('Tipo de trabajo invalido');
+    }
+
+    return normalized;
+}
+
 router.get('/', authRequired, async (req, res) => {
     const servicios = await listServices();
     return res.json(servicios);
@@ -39,12 +56,13 @@ router.post('/', authRequired, adminRequired, async (req, res) => {
 
         const precio = parsePrice(req.body?.precio);
         const duracionMinutos = parseDuration(req.body?.duracionMinutos);
-        const servicio = await createService({ nombre, precio, duracionMinutos });
+        const tipoTrabajo = parseWorkType(req.body?.tipoTrabajo);
+        const servicio = await createService({ nombre, precio, duracionMinutos, tipoTrabajo });
 
         return res.status(201).json(servicio);
     } catch (error) {
         if (error?.code === 11000) {
-            return res.status(409).json({ error: 'Ya existe un servicio con ese nombre' });
+            return res.status(409).json({ error: 'Ya existe un servicio con ese nombre para ese tipo de trabajo' });
         }
         return res.status(400).json({ error: error.message || 'No se pudo crear el servicio' });
     }
@@ -59,7 +77,8 @@ router.put('/:id', authRequired, adminRequired, async (req, res) => {
 
         const precio = parsePrice(req.body?.precio);
         const duracionMinutos = parseDuration(req.body?.duracionMinutos);
-        const servicio = await updateService(req.params.id, { nombre, precio, duracionMinutos });
+        const tipoTrabajo = parseWorkType(req.body?.tipoTrabajo);
+        const servicio = await updateService(req.params.id, { nombre, precio, duracionMinutos, tipoTrabajo });
         if (!servicio) {
             return res.status(404).json({ error: 'Servicio no encontrado' });
         }
@@ -67,7 +86,7 @@ router.put('/:id', authRequired, adminRequired, async (req, res) => {
         return res.json(servicio);
     } catch (error) {
         if (error?.code === 11000) {
-            return res.status(409).json({ error: 'Ya existe un servicio con ese nombre' });
+            return res.status(409).json({ error: 'Ya existe un servicio con ese nombre para ese tipo de trabajo' });
         }
         return res.status(400).json({ error: error.message || 'No se pudo actualizar el servicio' });
     }

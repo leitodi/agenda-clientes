@@ -367,7 +367,15 @@
             <section id="tab-servicios" class="tab-panel card hidden admin-only">
                 <h3>Servicios de Caja</h3>
                 <form id="servicioForm" class="form-grid">
-                    <input id="servicioId" type="hidden">
+                    <label>
+                        Tipo de trabajo
+                        <select id="servicioTipoTrabajo" required>
+                            <option value="peluqueria">Peluqueria</option>
+                            <option value="barberia">Barberia</option>
+                            <option value="manicura">Manicura</option>
+                            <option value="depilacion">Depilaci&oacute;n</option>
+                        </select>
+                    </label>
                     <label>
                         Nombre del servicio
                         <input id="servicioNombre" type="text" required>
@@ -381,8 +389,7 @@
                         <input id="servicioDuracion" type="number" min="1" step="1" required>
                     </label>
                     <div class="inline-actions">
-                        <button type="submit" class="btn primary">Guardar servicio</button>
-                        <button id="cancelEditServicio" type="button" class="btn">Cancelar edición</button>
+                        <button type="submit" class="btn primary">Crear servicio</button>
                     </div>
                 </form>
 
@@ -390,6 +397,7 @@
                     <table>
                         <thead>
                             <tr>
+                                <th>Tipo de trabajo</th>
                                 <th>Servicio</th>
                                 <th>Importe</th>
                                 <th>Duracion</th>
@@ -423,6 +431,15 @@
                             <option value="efectivo">Efectivo</option>
                             <option value="transferencia">Transferencia</option>
                             <option value="tarjeta">Tarjeta</option>
+                        </select>
+                    </label>
+                    <label>
+                        Trabajo
+                        <select id="cajaTipoTrabajo" required>
+                            <option value="peluqueria">Peluqueria</option>
+                            <option value="barberia">Barberia</option>
+                            <option value="manicura">Manicura</option>
+                            <option value="depilacion">Depilaci&oacute;n</option>
                         </select>
                     </label>
                     <label>
@@ -713,6 +730,40 @@
                 <div class="inline-actions">
                     <button type="submit" class="btn primary">Guardar cambios</button>
                     <button id="cancelEditarUsuario" type="button" class="btn danger">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="editarServicioModal" class="modal hidden">
+        <div class="modal-card modal-card-small">
+            <h3>Editar servicio</h3>
+            <form id="editarServicioForm" class="form-grid">
+                <input id="editarServicioId" type="hidden">
+                <label>
+                    Tipo de trabajo
+                    <select id="editarServicioTipoTrabajo" required>
+                        <option value="peluqueria">Peluqueria</option>
+                        <option value="barberia">Barberia</option>
+                        <option value="manicura">Manicura</option>
+                        <option value="depilacion">Depilaci&oacute;n</option>
+                    </select>
+                </label>
+                <label>
+                    Nombre del servicio
+                    <input id="editarServicioNombre" type="text" required>
+                </label>
+                <label>
+                    Importe
+                    <input id="editarServicioPrecio" type="number" min="0" step="0.01" required>
+                </label>
+                <label>
+                    Duracion (minutos)
+                    <input id="editarServicioDuracion" type="number" min="1" step="1" required>
+                </label>
+                <div class="inline-actions">
+                    <button type="submit" class="btn primary">Guardar cambios</button>
+                    <button id="cancelEditarServicio" type="button" class="btn danger">Cancelar</button>
                 </div>
             </form>
         </div>

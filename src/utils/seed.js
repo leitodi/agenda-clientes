@@ -3,6 +3,10 @@ const User = require('../models/User');
 const Barber = require('../models/Barber');
 const Attendance = require('../models/Attendance');
 const Service = require('../models/Service');
+const {
+    DEFAULT_SERVICE_WORK_TYPE,
+    normalizeServiceWorkType
+} = require('./serviceWorkTypes');
 
 function scheduleRange(start, end, dayStart, dayEnd) {
     const items = [];
@@ -86,23 +90,28 @@ async function ensureSeedData() {
     });
 
     const defaultServices = [
-        { nombre: 'Cejas', precio: 5000, duracionMinutos: 15 },
-        { nombre: 'Barba', precio: 7000, duracionMinutos: 20 },
-        { nombre: 'Corte', precio: 12000, duracionMinutos: 30 },
-        { nombre: 'Corte + Barba', precio: 14000, duracionMinutos: 45 }
+        { nombre: 'Cejas', precio: 5000, duracionMinutos: 15, tipoTrabajo: DEFAULT_SERVICE_WORK_TYPE },
+        { nombre: 'Barba', precio: 7000, duracionMinutos: 20, tipoTrabajo: DEFAULT_SERVICE_WORK_TYPE },
+        { nombre: 'Corte', precio: 12000, duracionMinutos: 30, tipoTrabajo: DEFAULT_SERVICE_WORK_TYPE },
+        { nombre: 'Corte + Barba', precio: 14000, duracionMinutos: 45, tipoTrabajo: DEFAULT_SERVICE_WORK_TYPE }
     ];
 
-    const existingServices = await Service.find().select('_id nombre nombreNormalizado duracionMinutos');
-    const existingNames = new Set(existingServices.map((item) => item.nombreNormalizado));
+    const existingServices = await Service.find().select('_id nombre nombreNormalizado duracionMinutos tipoTrabajo');
+    const existingNames = new Set(existingServices.map((item) => {
+        const normalizedName = String(item.nombreNormalizado || item.nombre || '').trim().toLowerCase();
+        const tipoTrabajo = normalizeServiceWorkType(item.tipoTrabajo);
+        return `${normalizedName}::${tipoTrabajo}`;
+    }));
     const missingServices = defaultServices.filter((service) => {
         const normalized = String(service.nombre || '').trim().toLowerCase();
-        return !existingNames.has(normalized);
+        return !existingNames.has(`${normalized}::${normalizeServiceWorkType(service.tipoTrabajo)}`);
     });
 
     if (missingServices.length) {
         await Service.insertMany(missingServices.map((service) => ({
             ...service,
-            nombreNormalizado: String(service.nombre || '').trim().toLowerCase()
+            nombreNormalizado: String(service.nombre || '').trim().toLowerCase(),
+            tipoTrabajo: normalizeServiceWorkType(service.tipoTrabajo)
         })));
         console.log(`Servicios iniciales creados: ${missingServices.length}`);
     }
@@ -130,6 +139,23 @@ async function ensureSeedData() {
 
         await Service.bulkWrite(operations);
         console.log(`Servicios actualizados con duracionMinutos: ${servicesWithoutDuration.length}`);
+    }
+
+    const servicesWithoutWorkType = existingServices.filter((service) => {
+        const current = String(service.tipoTrabajo || '').trim().toLowerCase();
+        return !current || current !== normalizeServiceWorkType(current);
+    });
+
+    if (servicesWithoutWorkType.length) {
+        const operations = servicesWithoutWorkType.map((service) => ({
+            updateOne: {
+                filter: { _id: service._id },
+                update: { $set: { tipoTrabajo: normalizeServiceWorkType(service.tipoTrabajo) } }
+            }
+        }));
+
+        await Service.bulkWrite(operations);
+        console.log(`Servicios actualizados con tipoTrabajo: ${servicesWithoutWorkType.length}`);
     }
 
     let barbers = await Barber.find().sort({ nombre: 1 });

@@ -23,6 +23,7 @@ const Appointment = require('./src/models/Appointment');
 const Attendance = require('./src/models/Attendance');
 const { ensureSeedData } = require('./src/utils/seed');
 const { SERVICE_TYPES } = require('./src/utils/services');
+const { normalizeServiceWorkType } = require('./src/utils/serviceWorkTypes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -129,6 +130,57 @@ async function ensureClientIndexes() {
         }
     } catch (error) {
         console.warn('No se pudo normalizar telefono de clientes existentes:', error.message);
+    }
+}
+
+async function ensureServiceIndexes() {
+    const collection = mongoose.connection.collection('services');
+
+    try {
+        const indexes = await collection.indexes();
+        const uniqueByName = indexes.find((index) => index.name === 'nombreNormalizado_1' && index.unique);
+
+        if (uniqueByName) {
+            await collection.dropIndex('nombreNormalizado_1');
+            console.log('Indice unico nombreNormalizado_1 eliminado en servicios');
+        }
+    } catch (error) {
+        console.warn('No se pudo revisar/eliminar indice unico de servicios:', error.message);
+    }
+
+    try {
+        await collection.createIndex(
+            { nombreNormalizado: 1, tipoTrabajo: 1 },
+            { name: 'nombreNormalizado_1_tipoTrabajo_1', unique: true }
+        );
+    } catch (error) {
+        console.warn('No se pudo crear indice compuesto de servicios:', error.message);
+    }
+
+    try {
+        const services = await Service.find().select('_id tipoTrabajo');
+        const operations = services
+            .map((service) => {
+                const normalized = normalizeServiceWorkType(service.tipoTrabajo);
+                if (normalized === String(service.tipoTrabajo || '').trim().toLowerCase()) {
+                    return null;
+                }
+
+                return {
+                    updateOne: {
+                        filter: { _id: service._id },
+                        update: { $set: { tipoTrabajo: normalized } }
+                    }
+                };
+            })
+            .filter(Boolean);
+
+        if (operations.length) {
+            await Service.bulkWrite(operations);
+            console.log(`Servicios actualizados con tipoTrabajo normalizado: ${operations.length}`);
+        }
+    } catch (error) {
+        console.warn('No se pudo normalizar tipoTrabajo en servicios:', error.message);
     }
 }
 
@@ -244,6 +296,7 @@ async function startServer() {
         console.log(`Conectado a MongoDB (${ACTIVE_DB_NAME})`);
 
         await ensureClientIndexes();
+        await ensureServiceIndexes();
         await ensureSeedData();
         await ensureUppercaseData();
         await ensureAttendanceClientLinks();

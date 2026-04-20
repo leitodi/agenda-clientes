@@ -7,6 +7,16 @@ const MIN_JPEG_QUALITY = 0.5;
 const MAX_FALLBACK_FILE_BYTES = 6 * 1024 * 1024;
 const OPENING_MINUTES = 10 * 60;
 const CLOSING_MINUTES = 22 * 60;
+const DEFAULT_SERVICE_WORK_TYPE = 'peluqueria';
+const SERVICE_WORK_TYPES = [
+    { value: 'peluqueria', label: 'Peluqueria' },
+    { value: 'barberia', label: 'Barberia' },
+    { value: 'manicura', label: 'Manicura' },
+    { value: 'depilacion', label: 'Depilaci\u00f3n' }
+];
+const SERVICE_WORK_TYPE_LABELS = Object.fromEntries(
+    SERVICE_WORK_TYPES.map((item) => [item.value, item.label])
+);
 
 const state = {
     token: localStorage.getItem('agendaToken') || null,
@@ -79,6 +89,15 @@ function escapeHtml(value) {
 
 function normalizeText(value) {
     return String(value || '').trim().toLowerCase();
+}
+
+function normalizeServiceWorkType(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return SERVICE_WORK_TYPE_LABELS[normalized] ? normalized : DEFAULT_SERVICE_WORK_TYPE;
+}
+
+function getServiceWorkTypeLabel(value) {
+    return SERVICE_WORK_TYPE_LABELS[normalizeServiceWorkType(value)] || SERVICE_WORK_TYPE_LABELS[DEFAULT_SERVICE_WORK_TYPE];
 }
 
 function normalizeDigits(value) {
@@ -565,20 +584,36 @@ function syncCajaMontoByServicio() {
     $('cajaMonto').value = servicio ? Number(servicio.precio).toFixed(2) : '';
 }
 
+function getCajaSelectedWorkType() {
+    return normalizeServiceWorkType($('cajaTipoTrabajo')?.value || DEFAULT_SERVICE_WORK_TYPE);
+}
+
+function getCajaServiciosDisponibles() {
+    const tipoTrabajo = getCajaSelectedWorkType();
+    return state.serviciosCaja.filter((servicio) => normalizeServiceWorkType(servicio.tipoTrabajo) === tipoTrabajo);
+}
+
 function renderCajaServiciosSelect() {
     const select = $('cajaServicio');
     if (!select) {
         return;
     }
 
-    if (!state.serviciosCaja.length) {
-        select.innerHTML = '<option value="">Sin servicios disponibles</option>';
+    const tipoTrabajo = getCajaSelectedWorkType();
+    if ($('cajaTipoTrabajo')) {
+        $('cajaTipoTrabajo').value = tipoTrabajo;
+    }
+
+    const serviciosDisponibles = getCajaServiciosDisponibles();
+
+    if (!serviciosDisponibles.length) {
+        select.innerHTML = '<option value="">Sin servicios para este trabajo</option>';
         select.value = '';
         $('cajaMonto').value = '';
         return;
     }
 
-    const options = state.serviciosCaja
+    const options = serviciosDisponibles
         .map((servicio) => (
             `<option value="${servicio._id}">${escapeHtml(servicio.nombre)}</option>`
         ))
@@ -587,10 +622,10 @@ function renderCajaServiciosSelect() {
     const current = select.value;
     select.innerHTML = options;
 
-    if (current && state.serviciosCaja.some((item) => item._id === current)) {
+    if (current && serviciosDisponibles.some((item) => item._id === current)) {
         select.value = current;
     } else {
-        select.value = state.serviciosCaja[0]._id;
+        select.value = serviciosDisponibles[0]._id;
     }
 
     syncCajaMontoByServicio();
@@ -651,12 +686,23 @@ function renderServiciosTable() {
     }
 
     if (!state.serviciosCaja.length) {
-        body.innerHTML = '<tr><td colspan="4">No hay servicios cargados.</td></tr>';
+        body.innerHTML = '<tr><td colspan="5">No hay servicios cargados.</td></tr>';
         return;
     }
 
-    body.innerHTML = state.serviciosCaja.map((servicio) => `
+    const serviciosOrdenados = state.serviciosCaja.slice().sort((a, b) => {
+        const tipoA = getServiceWorkTypeLabel(a.tipoTrabajo);
+        const tipoB = getServiceWorkTypeLabel(b.tipoTrabajo);
+        const compareType = tipoA.localeCompare(tipoB);
+        if (compareType !== 0) {
+            return compareType;
+        }
+        return String(a.nombre || '').localeCompare(String(b.nombre || ''));
+    });
+
+    body.innerHTML = serviciosOrdenados.map((servicio) => `
         <tr>
+            <td>${escapeHtml(getServiceWorkTypeLabel(servicio.tipoTrabajo))}</td>
             <td>${escapeHtml(servicio.nombre)}</td>
             <td>$${formatCurrency(servicio.precio)}</td>
             <td>${Number(servicio.duracionMinutos || 30)} min</td>
@@ -1971,10 +2017,19 @@ function resetPeluqueroForm() {
 }
 
 function resetServicioForm() {
-    $('servicioId').value = '';
+    $('servicioTipoTrabajo').value = DEFAULT_SERVICE_WORK_TYPE;
     $('servicioNombre').value = '';
     $('servicioPrecio').value = '';
     $('servicioDuracion').value = '30';
+}
+
+function readServicioPayload(fieldPrefix = 'servicio') {
+    return {
+        tipoTrabajo: normalizeServiceWorkType($(`${fieldPrefix}TipoTrabajo`).value),
+        nombre: $(`${fieldPrefix}Nombre`).value.trim(),
+        precio: Number($(`${fieldPrefix}Precio`).value),
+        duracionMinutos: Number($(`${fieldPrefix}Duracion`).value)
+    };
 }
 
 function readPeluqueroAgenda() {
@@ -2018,17 +2073,26 @@ function fillPeluqueroForm(barberId) {
     });
 }
 
-function fillServicioForm(servicioId) {
+function openEditarServicioModal(servicioId) {
     const servicio = state.serviciosCaja.find((item) => item._id === servicioId);
     if (!servicio) {
         showMessage('Servicio no encontrado', 'error');
         return;
     }
 
-    $('servicioId').value = servicio._id;
-    $('servicioNombre').value = servicio.nombre;
-    $('servicioPrecio').value = Number(servicio.precio).toFixed(2);
-    $('servicioDuracion').value = Number(servicio.duracionMinutos || 30);
+    $('editarServicioId').value = servicio._id;
+    $('editarServicioTipoTrabajo').value = normalizeServiceWorkType(servicio.tipoTrabajo);
+    $('editarServicioNombre').value = servicio.nombre;
+    $('editarServicioPrecio').value = Number(servicio.precio).toFixed(2);
+    $('editarServicioDuracion').value = Number(servicio.duracionMinutos || 30);
+    $('editarServicioModal').classList.remove('hidden');
+}
+
+function closeEditarServicioModal() {
+    $('editarServicioModal').classList.add('hidden');
+    $('editarServicioForm').reset();
+    $('editarServicioTipoTrabajo').value = DEFAULT_SERVICE_WORK_TYPE;
+    $('editarServicioId').value = '';
 }
 
 function getTurnoPhotoRefs(slot) {
@@ -2612,7 +2676,13 @@ async function cargarPeluqueros() {
 }
 
 async function cargarServiciosCaja() {
-    state.serviciosCaja = await apiFetch('/api/servicios');
+    const servicios = await apiFetch('/api/servicios');
+    state.serviciosCaja = Array.isArray(servicios)
+        ? servicios.map((servicio) => ({
+            ...servicio,
+            tipoTrabajo: normalizeServiceWorkType(servicio.tipoTrabajo)
+        }))
+        : [];
     renderCajaServiciosSelect();
     renderTurnoServiciosSelect();
     renderServiciosTable();
@@ -3343,30 +3413,15 @@ function attachEvents() {
         event.preventDefault();
 
         try {
-            const id = $('servicioId').value;
-            const payload = {
-                nombre: $('servicioNombre').value.trim(),
-                precio: Number($('servicioPrecio').value),
-                duracionMinutos: Number($('servicioDuracion').value)
-            };
-
-            if (id) {
-                await apiFetch(`/api/servicios/${id}`, { method: 'PUT', body: payload });
-                showMessage('Servicio actualizado');
-            } else {
-                await apiFetch('/api/servicios', { method: 'POST', body: payload });
-                showMessage('Servicio creado');
-            }
+            const payload = readServicioPayload('servicio');
+            await apiFetch('/api/servicios', { method: 'POST', body: payload });
 
             resetServicioForm();
             await cargarServiciosCaja();
+            showMessage('Servicio creado');
         } catch (error) {
             showMessage(error.message, 'error');
         }
-    });
-
-    $('cancelEditServicio').addEventListener('click', () => {
-        resetServicioForm();
     });
 
     $('serviciosTableBody').addEventListener('click', async (event) => {
@@ -3374,7 +3429,7 @@ function attachEvents() {
         const deleteBtn = event.target.closest('button[data-action="delete-servicio"]');
 
         if (editBtn) {
-            fillServicioForm(editBtn.dataset.id);
+            openEditarServicioModal(editBtn.dataset.id);
             return;
         }
 
@@ -3395,8 +3450,41 @@ function attachEvents() {
         }
     });
 
+    $('editarServicioForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const servicioId = $('editarServicioId').value;
+            if (!servicioId) {
+                throw new Error('Servicio no encontrado');
+            }
+
+            const payload = readServicioPayload('editarServicio');
+            await apiFetch(`/api/servicios/${servicioId}`, { method: 'PUT', body: payload });
+            closeEditarServicioModal();
+            await cargarServiciosCaja();
+            showMessage('Servicio actualizado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cancelEditarServicio').addEventListener('click', () => {
+        closeEditarServicioModal();
+    });
+
+    $('editarServicioModal').addEventListener('click', (event) => {
+        if (event.target.id === 'editarServicioModal') {
+            closeEditarServicioModal();
+        }
+    });
+
     $('cajaServicio').addEventListener('change', () => {
         syncCajaMontoByServicio();
+    });
+
+    $('cajaTipoTrabajo').addEventListener('change', () => {
+        renderCajaServiciosSelect();
     });
 
     $('cajaForm').addEventListener('submit', async (event) => {

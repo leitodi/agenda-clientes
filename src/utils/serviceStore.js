@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Service = require('../models/Service');
+const { normalizeServiceWorkType } = require('./serviceWorkTypes');
 
 const LEGACY_DB_NAME = 'agenda_clientes';
 
@@ -12,9 +13,12 @@ function toServicePayload(service, source = 'primary') {
         return null;
     }
 
+    const payload = service.toObject();
+
     return {
-        ...service.toObject(),
+        ...payload,
         _id: service._id,
+        tipoTrabajo: normalizeServiceWorkType(payload.tipoTrabajo),
         source
     };
 }
@@ -31,11 +35,11 @@ async function getLegacyServiceModel() {
 async function listServices() {
     const legacyModel = await getLegacyServiceModel();
     if (legacyModel) {
-        const services = await legacyModel.find().sort({ nombre: 1 });
+        const services = await legacyModel.find().sort({ tipoTrabajo: 1, nombre: 1 });
         return services.map((service) => toServicePayload(service, 'legacy'));
     }
 
-    const services = await Service.find().sort({ nombre: 1 });
+    const services = await Service.find().sort({ tipoTrabajo: 1, nombre: 1 });
     return services.map((service) => toServicePayload(service, 'primary'));
 }
 
@@ -61,10 +65,11 @@ async function findServiceById(id) {
     return toServicePayload(primaryService, 'primary');
 }
 
-async function createService({ nombre, precio, duracionMinutos }) {
+async function createService({ nombre, precio, duracionMinutos, tipoTrabajo }) {
     const payload = {
         nombre,
         nombreNormalizado: normalizeName(nombre),
+        tipoTrabajo: normalizeServiceWorkType(tipoTrabajo),
         precio,
         duracionMinutos
     };
@@ -76,7 +81,7 @@ async function createService({ nombre, precio, duracionMinutos }) {
     return toServicePayload(service, legacyModel ? 'legacy' : 'primary');
 }
 
-async function updateService(id, { nombre, precio, duracionMinutos }) {
+async function updateService(id, { nombre, precio, duracionMinutos, tipoTrabajo }) {
     const serviceId = String(id || '').trim();
     if (!mongoose.Types.ObjectId.isValid(serviceId)) {
         return null;
@@ -98,6 +103,7 @@ async function updateService(id, { nombre, precio, duracionMinutos }) {
 
         service.nombre = nombre;
         service.nombreNormalizado = normalizeName(nombre);
+        service.tipoTrabajo = normalizeServiceWorkType(tipoTrabajo);
         service.precio = precio;
         service.duracionMinutos = duracionMinutos;
         await service.save();
