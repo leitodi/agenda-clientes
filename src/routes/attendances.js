@@ -7,6 +7,7 @@ const { authRequired } = require('../middleware/auth');
 const { parseTimeToMinutes } = require('../utils/time');
 const { getLegacyAttendancesByDateRange } = require('../utils/legacyAttendanceStore');
 const { findServiceById } = require('../utils/serviceStore');
+const { findProductById } = require('../utils/productStore');
 
 const router = express.Router();
 const TURNO_CAJA_TOLERANCIA_MINUTOS = 120;
@@ -108,6 +109,7 @@ router.get('/', authRequired, async (req, res) => {
     let atenciones = await Attendance.find(filter)
         .populate('peluquero', 'nombre porcentajeComision')
         .populate('servicioId', 'nombre precio')
+        .populate('productoId', 'nombre precio comisionMonto')
         .sort({ fecha: -1, createdAt: -1 });
 
     if (!atenciones.length) {
@@ -126,11 +128,26 @@ router.post('/', authRequired, async (req, res) => {
         clienteId,
         formaPago,
         montoCobrado,
-        servicioId
+        servicioId,
+        productoId,
+        tipoVenta
     } = req.body;
 
-    if (!isValidDateString(fecha) || !peluqueroId || (!servicioId && montoCobrado === undefined)) {
-        return res.status(400).json({ error: 'Fecha, peluquero y servicio son requeridos' });
+    const tipoVentaNormalizado = String(tipoVenta || 'servicio').trim().toLowerCase();
+    if (!['servicio', 'producto'].includes(tipoVentaNormalizado)) {
+        return res.status(400).json({ error: 'Tipo de venta invalido' });
+    }
+
+    if (!isValidDateString(fecha) || !peluqueroId) {
+        return res.status(400).json({ error: 'Fecha y peluquero son requeridos' });
+    }
+
+    if (tipoVentaNormalizado === 'servicio' && !servicioId) {
+        return res.status(400).json({ error: 'Debes seleccionar un servicio' });
+    }
+
+    if (tipoVentaNormalizado === 'producto' && !productoId) {
+        return res.status(400).json({ error: 'Debes seleccionar un producto' });
     }
 
     const formaPagoNormalizada = String(formaPago || '').trim().toLowerCase();
@@ -141,8 +158,10 @@ router.post('/', authRequired, async (req, res) => {
     let monto = Number(montoCobrado);
     let servicio = null;
     let servicioNombre = '';
+    let producto = null;
+    let productoNombre = '';
 
-    if (servicioId) {
+    if (tipoVentaNormalizado === 'servicio') {
         if (!/^[a-fA-F0-9]{24}$/.test(String(servicioId))) {
             return res.status(400).json({ error: 'Servicio invalido' });
         }
@@ -152,6 +171,16 @@ router.post('/', authRequired, async (req, res) => {
         }
         monto = Number(servicio.precio);
         servicioNombre = servicio.nombre;
+    } else {
+        if (!/^[a-fA-F0-9]{24}$/.test(String(productoId))) {
+            return res.status(400).json({ error: 'Producto invalido' });
+        }
+        producto = await findProductById(productoId);
+        if (!producto) {
+            return res.status(404).json({ error: 'Producto no encontrado' });
+        }
+        monto = Number(producto.precio);
+        productoNombre = producto.nombre;
     }
 
     if (Number.isNaN(monto) || monto < 0) {
@@ -183,17 +212,23 @@ router.post('/', authRequired, async (req, res) => {
     }
 
     const clienteNombreFinal = String(clienteExistente?.nombre || clienteNombreIngresado).trim();
-    const comisionGanada = Number(((monto * barber.porcentajeComision) / 100).toFixed(2));
+    const comisionGanada = tipoVentaNormalizado === 'producto'
+        ? Number(Number(producto.comisionMonto || 0).toFixed(2))
+        : Number(((monto * barber.porcentajeComision) / 100).toFixed(2));
 
     const atencion = await Attendance.create({
         fecha,
         cliente: clienteNombreFinal,
         clientId: clienteExistente?._id || null,
+        tipoVenta: tipoVentaNormalizado,
         servicioNombre,
         servicioId: servicio?.source === 'primary' ? servicio._id : undefined,
+        productoNombre,
+        productoId: producto?._id || null,
         formaPago: formaPagoNormalizada,
         montoCobrado: monto,
-        comisionPorcentaje: barber.porcentajeComision,
+        comisionTipo: tipoVentaNormalizado === 'producto' ? 'monto' : 'porcentaje',
+        comisionPorcentaje: tipoVentaNormalizado === 'producto' ? 0 : barber.porcentajeComision,
         comisionGanada,
         peluquero: barber._id,
         registradoPor: req.user.id
@@ -208,16 +243,19 @@ router.post('/', authRequired, async (req, res) => {
         }
     }
 
-    const turnoAtendido = await marcarTurnoAtendidoSiCorresponde({
-        fecha,
-        horaReferencia,
-        clienteNombre: clienteNombreFinal,
-        clienteId: clienteExistente?._id || null
-    });
+    const turnoAtendido = tipoVentaNormalizado === 'servicio'
+        ? await marcarTurnoAtendidoSiCorresponde({
+            fecha,
+            horaReferencia,
+            clienteNombre: clienteNombreFinal,
+            clienteId: clienteExistente?._id || null
+        })
+        : null;
 
     const populated = await Attendance.findById(atencion._id)
         .populate('peluquero', 'nombre porcentajeComision')
-        .populate('servicioId', 'nombre precio');
+        .populate('servicioId', 'nombre precio')
+        .populate('productoId', 'nombre precio comisionMonto');
 
     return res.status(201).json({
         ...populated.toObject(),

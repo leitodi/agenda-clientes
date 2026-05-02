@@ -60,6 +60,7 @@
                 <button class="tab-btn" data-tab="cumpleanos">Cumpleaños</button>
                 <button class="tab-btn admin-only" data-tab="peluqueros">Peluqueros</button>
                 <button class="tab-btn admin-only" data-tab="servicios">Servicios</button>
+                <button class="tab-btn admin-only" data-tab="productos">Productos</button>
                 <button class="tab-btn" data-tab="caja">Caja</button>
                 <button class="tab-btn restricted-agenda" data-tab="reportes">Reportes</button>
                 <button class="tab-btn admin-only" data-tab="consultas">Consultas</button>
@@ -409,6 +410,41 @@
                 </div>
             </section>
 
+            <section id="tab-productos" class="tab-panel card hidden admin-only">
+                <h3>Productos</h3>
+                <form id="productoForm" class="form-grid">
+                    <label>
+                        Nombre del producto
+                        <input id="productoNombre" type="text" required>
+                    </label>
+                    <label>
+                        Precio de venta
+                        <input id="productoPrecio" type="number" min="0" step="0.01" required>
+                    </label>
+                    <label>
+                        Comision fija para el barbero
+                        <input id="productoComisionMonto" type="number" min="0" step="0.01" required>
+                    </label>
+                    <div class="inline-actions">
+                        <button type="submit" class="btn primary">Crear producto</button>
+                    </div>
+                </form>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th>Precio</th>
+                                <th>Comision</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productosTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
             <section id="tab-caja" class="tab-panel card hidden">
                 <h3>Caja - Carga de Ventas</h3>
                 <form id="cajaForm" class="form-grid">
@@ -434,6 +470,13 @@
                         </select>
                     </label>
                     <label>
+                        Tipo de venta
+                        <select id="cajaTipoVenta" required>
+                            <option value="servicio">Servicio</option>
+                            <option value="producto">Producto</option>
+                        </select>
+                    </label>
+                    <label id="cajaTipoTrabajoGroup">
                         Trabajo
                         <select id="cajaTipoTrabajo" required>
                             <option value="peluqueria">Peluqueria</option>
@@ -442,9 +485,13 @@
                             <option value="depilacion">Depilaci&oacute;n</option>
                         </select>
                     </label>
-                    <label>
+                    <label id="cajaServicioGroup">
                         Servicio
                         <select id="cajaServicio" required></select>
+                    </label>
+                    <label id="cajaProductoGroup" class="hidden">
+                        Producto
+                        <select id="cajaProducto"></select>
                     </label>
                     <label>
                         Monto cobrado (automático)
@@ -452,6 +499,24 @@
                     </label>
                     <button type="submit" class="btn primary">Registrar venta</button>
                 </form>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Detalle</th>
+                                <th>Peluquero</th>
+                                <th>Cliente</th>
+                                <th>Pago</th>
+                                <th>Monto</th>
+                                <th>Comision</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cajaTableBody"></tbody>
+                    </table>
+                </div>
             </section>
 
             <section id="tab-reportes" class="tab-panel card hidden restricted-agenda">
@@ -480,6 +545,8 @@
                         <thead>
                             <tr>
                                 <th>Peluquero</th>
+                                <th>Tipo</th>
+                                <th>Detalle</th>
                                 <th>Cliente</th>
                                 <th>Monto</th>
                                 <th>Comision</th>
@@ -769,6 +836,31 @@
         </div>
     </div>
 
-    <script src="script.js?v=2.0.2"></script>
+    <div id="editarProductoModal" class="modal hidden">
+        <div class="modal-card modal-card-small">
+            <h3>Editar producto</h3>
+            <form id="editarProductoForm" class="form-grid">
+                <input id="editarProductoId" type="hidden">
+                <label>
+                    Nombre del producto
+                    <input id="editarProductoNombre" type="text" required>
+                </label>
+                <label>
+                    Precio de venta
+                    <input id="editarProductoPrecio" type="number" min="0" step="0.01" required>
+                </label>
+                <label>
+                    Comision fija para el barbero
+                    <input id="editarProductoComisionMonto" type="number" min="0" step="0.01" required>
+                </label>
+                <div class="inline-actions">
+                    <button type="submit" class="btn primary">Guardar cambios</button>
+                    <button id="cancelEditarProducto" type="button" class="btn danger">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js?v=2.0.3"></script>
 </body>
 </html>

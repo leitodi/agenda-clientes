@@ -32,6 +32,7 @@ const state = {
     clientes: [],
     cumpleClientes: [],
     serviciosCaja: [],
+    productos: [],
     selectedClienteId: null,
     selectedTurnoClienteId: null,
     selectedCumpleDate: null,
@@ -98,6 +99,27 @@ function normalizeServiceWorkType(value) {
 
 function getServiceWorkTypeLabel(value) {
     return SERVICE_WORK_TYPE_LABELS[normalizeServiceWorkType(value)] || SERVICE_WORK_TYPE_LABELS[DEFAULT_SERVICE_WORK_TYPE];
+}
+
+function getSaleTypeLabel(value) {
+    return String(value || '').trim().toLowerCase() === 'producto' ? 'Producto' : 'Servicio';
+}
+
+function getAttendanceDetailLabel(attendance) {
+    if (attendance?.tipoVenta === 'producto') {
+        return attendance.productoNombre || attendance.productoId?.nombre || '-';
+    }
+
+    return attendance.servicioNombre || attendance.servicioId?.nombre || '-';
+}
+
+function getAttendanceCommissionLabel(attendance) {
+    const monto = Number(attendance?.comisionGanada || 0).toFixed(2);
+    if (attendance?.comisionTipo === 'monto' || attendance?.tipoVenta === 'producto') {
+        return `$${monto} fijo`;
+    }
+
+    return `$${monto} (${Number(attendance?.comisionPorcentaje || 0)}%)`;
 }
 
 function normalizeDigits(value) {
@@ -487,9 +509,12 @@ async function ensureTabData(tabName, force = false) {
         await cargarPeluqueros();
     } else if (tabName === 'servicios') {
         await cargarServiciosCaja();
+    } else if (tabName === 'productos') {
+        await cargarProductos();
     } else if (tabName === 'caja') {
         await Promise.all([
             cargarServiciosCaja(),
+            cargarProductos(),
             cargarPeluqueros(),
             cargarClientes(),
             cargarAtenciones()
@@ -508,10 +533,12 @@ async function ensureTabData(tabName, force = false) {
 
 async function activateTab(tabName, options = {}) {
     const { force = false } = options;
+    const wasLoaded = Boolean(state.loadedTabs[tabName]);
     setTab(tabName);
 
     if (tabName === 'caja') {
         setCajaFechaDefault();
+        updateCajaVentaFields();
     }
 
     if (tabName === 'turnos') {
@@ -523,6 +550,10 @@ async function activateTab(tabName, options = {}) {
     }
 
     await ensureTabData(tabName, force);
+
+    if (tabName === 'caja' && wasLoaded && !force) {
+        await cargarAtenciones();
+    }
 }
 
 function scheduleToText(agenda) {
@@ -578,7 +609,22 @@ function completarSelectPeluqueros() {
     }
 }
 
-function syncCajaMontoByServicio() {
+function getCajaSelectedSaleType() {
+    return String($('cajaTipoVenta')?.value || 'servicio').trim().toLowerCase() === 'producto'
+        ? 'producto'
+        : 'servicio';
+}
+
+function syncCajaMonto() {
+    const saleType = getCajaSelectedSaleType();
+
+    if (saleType === 'producto') {
+        const productoId = $('cajaProducto')?.value || '';
+        const producto = state.productos.find((item) => item._id === productoId);
+        $('cajaMonto').value = producto ? Number(producto.precio).toFixed(2) : '';
+        return;
+    }
+
     const servicioId = $('cajaServicio')?.value || '';
     const servicio = state.serviciosCaja.find((item) => item._id === servicioId);
     $('cajaMonto').value = servicio ? Number(servicio.precio).toFixed(2) : '';
@@ -591,6 +637,29 @@ function getCajaSelectedWorkType() {
 function getCajaServiciosDisponibles() {
     const tipoTrabajo = getCajaSelectedWorkType();
     return state.serviciosCaja.filter((servicio) => normalizeServiceWorkType(servicio.tipoTrabajo) === tipoTrabajo);
+}
+
+function updateCajaVentaFields() {
+    const saleType = getCajaSelectedSaleType();
+    const isProducto = saleType === 'producto';
+
+    $('cajaTipoTrabajoGroup')?.classList.toggle('hidden', isProducto);
+    $('cajaServicioGroup')?.classList.toggle('hidden', isProducto);
+    $('cajaProductoGroup')?.classList.toggle('hidden', !isProducto);
+
+    if ($('cajaTipoTrabajo')) {
+        $('cajaTipoTrabajo').required = !isProducto;
+    }
+
+    if ($('cajaServicio')) {
+        $('cajaServicio').required = !isProducto;
+    }
+
+    if ($('cajaProducto')) {
+        $('cajaProducto').required = isProducto;
+    }
+
+    syncCajaMonto();
 }
 
 function renderCajaServiciosSelect() {
@@ -628,7 +697,34 @@ function renderCajaServiciosSelect() {
         select.value = serviciosDisponibles[0]._id;
     }
 
-    syncCajaMontoByServicio();
+    syncCajaMonto();
+}
+
+function renderCajaProductosSelect() {
+    const select = $('cajaProducto');
+    if (!select) {
+        return;
+    }
+
+    if (!state.productos.length) {
+        select.innerHTML = '<option value="">Sin productos cargados</option>';
+        select.value = '';
+        syncCajaMonto();
+        return;
+    }
+
+    const current = select.value;
+    select.innerHTML = state.productos.map((producto) => (
+        `<option value="${producto._id}">${escapeHtml(producto.nombre)}</option>`
+    )).join('');
+
+    if (current && state.productos.some((item) => item._id === current)) {
+        select.value = current;
+    } else {
+        select.value = state.productos[0]._id;
+    }
+
+    syncCajaMonto();
 }
 
 function renderTurnoServiciosSelect() {
@@ -710,6 +806,36 @@ function renderServiciosTable() {
                 <div class="row-actions">
                     <button class="btn" type="button" data-action="edit-servicio" data-id="${servicio._id}">Editar</button>
                     <button class="btn danger" type="button" data-action="delete-servicio" data-id="${servicio._id}">Eliminar</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderProductosTable() {
+    const body = $('productosTableBody');
+    if (!body) {
+        return;
+    }
+
+    if (!state.productos.length) {
+        body.innerHTML = '<tr><td colspan="4">No hay productos cargados.</td></tr>';
+        return;
+    }
+
+    const productosOrdenados = state.productos.slice().sort((a, b) => (
+        String(a.nombre || '').localeCompare(String(b.nombre || ''))
+    ));
+
+    body.innerHTML = productosOrdenados.map((producto) => `
+        <tr>
+            <td>${escapeHtml(producto.nombre)}</td>
+            <td>$${formatCurrency(producto.precio)}</td>
+            <td>$${formatCurrency(producto.comisionMonto)}</td>
+            <td>
+                <div class="row-actions">
+                    <button class="btn" type="button" data-action="edit-producto" data-id="${producto._id}">Editar</button>
+                    <button class="btn danger" type="button" data-action="delete-producto" data-id="${producto._id}">Eliminar</button>
                 </div>
             </td>
         </tr>
@@ -1656,14 +1782,21 @@ function renderCajaTable() {
         return;
     }
 
+    if (!state.atenciones.length) {
+        body.innerHTML = '<tr><td colspan="8">No hay ventas para la fecha seleccionada.</td></tr>';
+        return;
+    }
+
     body.innerHTML = state.atenciones.map((a) => `
         <tr>
             <td>${a.fecha}</td>
+            <td>${escapeHtml(getSaleTypeLabel(a.tipoVenta))}</td>
+            <td>${escapeHtml(getAttendanceDetailLabel(a))}</td>
             <td>${escapeHtml(a.peluquero?.nombre || '-')}</td>
             <td>${escapeHtml(a.cliente || '-')}</td>
             <td>${escapeHtml(a.formaPago || '-')}</td>
             <td>$${Number(a.montoCobrado).toFixed(2)}</td>
-            <td>$${Number(a.comisionGanada).toFixed(2)} (${a.comisionPorcentaje}%)</td>
+            <td>${escapeHtml(getAttendanceCommissionLabel(a))}</td>
         </tr>
     `).join('');
 }
@@ -1723,16 +1856,18 @@ function renderReportes(atenciones = []) {
     `;
 
     if (!atenciones.length) {
-        body.innerHTML = '<tr><td colspan="4">No hay ventas para el filtro seleccionado.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6">No hay ventas para el filtro seleccionado.</td></tr>';
         return;
     }
 
     body.innerHTML = atenciones.map((item) => `
         <tr>
             <td>${escapeHtml(item.peluquero?.nombre || '-')}</td>
+            <td>${escapeHtml(getSaleTypeLabel(item.tipoVenta))}</td>
+            <td>${escapeHtml(getAttendanceDetailLabel(item))}</td>
             <td>${escapeHtml(item.cliente || '-')}</td>
             <td>$${Number(item.montoCobrado || 0).toFixed(2)}</td>
-            <td>$${Number(item.comisionGanada || 0).toFixed(2)}</td>
+            <td>${escapeHtml(getAttendanceCommissionLabel(item))}</td>
         </tr>
     `).join('');
 }
@@ -2032,6 +2167,20 @@ function readServicioPayload(fieldPrefix = 'servicio') {
     };
 }
 
+function resetProductoForm() {
+    $('productoNombre').value = '';
+    $('productoPrecio').value = '';
+    $('productoComisionMonto').value = '';
+}
+
+function readProductoPayload(fieldPrefix = 'producto') {
+    return {
+        nombre: $(`${fieldPrefix}Nombre`).value.trim(),
+        precio: Number($(`${fieldPrefix}Precio`).value),
+        comisionMonto: Number($(`${fieldPrefix}ComisionMonto`).value)
+    };
+}
+
 function readPeluqueroAgenda() {
     const inicio = $('peluqueroInicio').value;
     const fin = $('peluqueroFin').value;
@@ -2093,6 +2242,26 @@ function closeEditarServicioModal() {
     $('editarServicioForm').reset();
     $('editarServicioTipoTrabajo').value = DEFAULT_SERVICE_WORK_TYPE;
     $('editarServicioId').value = '';
+}
+
+function openEditarProductoModal(productoId) {
+    const producto = state.productos.find((item) => item._id === productoId);
+    if (!producto) {
+        showMessage('Producto no encontrado', 'error');
+        return;
+    }
+
+    $('editarProductoId').value = producto._id;
+    $('editarProductoNombre').value = producto.nombre;
+    $('editarProductoPrecio').value = Number(producto.precio).toFixed(2);
+    $('editarProductoComisionMonto').value = Number(producto.comisionMonto).toFixed(2);
+    $('editarProductoModal').classList.remove('hidden');
+}
+
+function closeEditarProductoModal() {
+    $('editarProductoModal').classList.add('hidden');
+    $('editarProductoForm').reset();
+    $('editarProductoId').value = '';
 }
 
 function getTurnoPhotoRefs(slot) {
@@ -2686,6 +2855,15 @@ async function cargarServiciosCaja() {
     renderCajaServiciosSelect();
     renderTurnoServiciosSelect();
     renderServiciosTable();
+    updateCajaVentaFields();
+}
+
+async function cargarProductos() {
+    const productos = await apiFetch('/api/productos');
+    state.productos = Array.isArray(productos) ? productos : [];
+    renderCajaProductosSelect();
+    renderProductosTable();
+    updateCajaVentaFields();
 }
 
 async function cargarClientes() {
@@ -3479,21 +3657,114 @@ function attachEvents() {
         }
     });
 
+    $('productoForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const payload = readProductoPayload('producto');
+            await apiFetch('/api/productos', { method: 'POST', body: payload });
+
+            resetProductoForm();
+            await cargarProductos();
+            showMessage('Producto creado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('productosTableBody').addEventListener('click', async (event) => {
+        const editBtn = event.target.closest('button[data-action="edit-producto"]');
+        const deleteBtn = event.target.closest('button[data-action="delete-producto"]');
+
+        if (editBtn) {
+            openEditarProductoModal(editBtn.dataset.id);
+            return;
+        }
+
+        if (!deleteBtn) {
+            return;
+        }
+
+        if (!confirm('Eliminar este producto?')) {
+            return;
+        }
+
+        try {
+            await apiFetch(`/api/productos/${deleteBtn.dataset.id}`, { method: 'DELETE' });
+            await cargarProductos();
+            showMessage('Producto eliminado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('editarProductoForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const productoId = $('editarProductoId').value;
+            if (!productoId) {
+                throw new Error('Producto no encontrado');
+            }
+
+            const payload = readProductoPayload('editarProducto');
+            await apiFetch(`/api/productos/${productoId}`, { method: 'PUT', body: payload });
+            closeEditarProductoModal();
+            await cargarProductos();
+            showMessage('Producto actualizado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cancelEditarProducto').addEventListener('click', () => {
+        closeEditarProductoModal();
+    });
+
+    $('editarProductoModal').addEventListener('click', (event) => {
+        if (event.target.id === 'editarProductoModal') {
+            closeEditarProductoModal();
+        }
+    });
+
     $('cajaServicio').addEventListener('change', () => {
-        syncCajaMontoByServicio();
+        syncCajaMonto();
+    });
+
+    $('cajaProducto').addEventListener('change', () => {
+        syncCajaMonto();
     });
 
     $('cajaTipoTrabajo').addEventListener('change', () => {
         renderCajaServiciosSelect();
     });
 
+    $('cajaTipoVenta').addEventListener('change', () => {
+        updateCajaVentaFields();
+    });
+
+    $('cajaFecha').addEventListener('change', async () => {
+        try {
+            await cargarAtenciones();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
     $('cajaForm').addEventListener('submit', async (event) => {
         event.preventDefault();
 
         try {
+            const tipoVenta = getCajaSelectedSaleType();
             const servicioId = $('cajaServicio').value;
-            if (!servicioId) {
+            const productoId = $('cajaProducto').value;
+
+            if (tipoVenta === 'servicio' && !servicioId) {
                 throw new Error('Debes seleccionar un servicio');
+            }
+
+            if (tipoVenta === 'producto' && !productoId) {
+                throw new Error('Debes seleccionar un producto');
             }
 
             const clienteNombre = $('cajaCliente').value.trim();
@@ -3507,14 +3778,20 @@ function attachEvents() {
                     cliente: clienteCoincidente?.nombre || clienteNombre,
                     clienteId: clienteCoincidente?._id || null,
                     formaPago: $('cajaFormaPago').value,
-                    servicioId
+                    tipoVenta,
+                    servicioId: tipoVenta === 'servicio' ? servicioId : null,
+                    productoId: tipoVenta === 'producto' ? productoId : null
                 }
             });
 
             setCajaFechaDefault();
             $('cajaCliente').value = '';
             $('cajaFormaPago').value = 'efectivo';
+            $('cajaTipoVenta').value = 'servicio';
             renderCajaServiciosSelect();
+            renderCajaProductosSelect();
+            updateCajaVentaFields();
+            await cargarAtenciones();
             showMessage(atencion?.turnoMarcadoAtendido ? 'Venta registrada en caja y turno marcado como atendido' : 'Venta registrada en caja');
         } catch (error) {
             showMessage(error.message, 'error');
@@ -3722,6 +3999,8 @@ async function init() {
     setDefaultDates();
     resetPeluqueroForm();
     resetServicioForm();
+    resetProductoForm();
+    updateCajaVentaFields();
     renderAsesorIaResultado();
     attachEvents();
     await restoreSession();

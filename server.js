@@ -16,9 +16,11 @@ const aiRoutes = require('./src/routes/ai');
 const dashboardRoutes = require('./src/routes/dashboard');
 const clientRoutes = require('./src/routes/clients');
 const serviceRoutes = require('./src/routes/services');
+const productRoutes = require('./src/routes/products');
 const Client = require('./src/models/Client');
 const Barber = require('./src/models/Barber');
 const Service = require('./src/models/Service');
+const Product = require('./src/models/Product');
 const Appointment = require('./src/models/Appointment');
 const Attendance = require('./src/models/Attendance');
 const { ensureSeedData } = require('./src/utils/seed');
@@ -75,6 +77,7 @@ app.use('/api/peluqueros', barberRoutes);
 app.use('/api/turnos', appointmentRoutes);
 app.use('/api/clientes', clientRoutes);
 app.use('/api/servicios', serviceRoutes);
+app.use('/api/productos', productRoutes);
 app.use('/api/atenciones', attendanceRoutes);
 app.use('/api/reportes', reportRoutes);
 app.use('/api/ai', aiRoutes);
@@ -184,6 +187,24 @@ async function ensureServiceIndexes() {
     }
 }
 
+async function ensureProductIndexes() {
+    const collection = mongoose.connection.collection('products');
+
+    try {
+        const indexes = await collection.indexes();
+        const uniqueByName = indexes.find((index) => index.name === 'nombreNormalizado_1' && index.unique);
+
+        if (!uniqueByName) {
+            await collection.createIndex(
+                { nombreNormalizado: 1 },
+                { name: 'nombreNormalizado_1', unique: true }
+            );
+        }
+    } catch (error) {
+        console.warn('No se pudo revisar/crear indice de productos:', error.message);
+    }
+}
+
 function toUpperTrimmed(value) {
     const text = String(value || '').trim();
     return text ? text.toUpperCase() : '';
@@ -230,10 +251,12 @@ async function ensureUppercaseData() {
     await migrateUppercaseField(Client, 'ultimaAtencionPeluquero', 'clientes.ultimaAtencionPeluquero');
     await migrateUppercaseField(Barber, 'nombre', 'peluqueros.nombre');
     await migrateUppercaseField(Service, 'nombre', 'servicios.nombre');
+    await migrateUppercaseField(Product, 'nombre', 'productos.nombre');
     await migrateUppercaseField(Appointment, 'cliente', 'turnos.cliente');
     await migrateUppercaseField(Appointment, 'servicioNombre', 'turnos.servicioNombre');
     await migrateUppercaseField(Attendance, 'cliente', 'atenciones.cliente');
     await migrateUppercaseField(Attendance, 'servicioNombre', 'atenciones.servicioNombre');
+    await migrateUppercaseField(Attendance, 'productoNombre', 'atenciones.productoNombre');
 }
 
 async function ensureAttendanceClientLinks() {
@@ -297,6 +320,7 @@ async function startServer() {
 
         await ensureClientIndexes();
         await ensureServiceIndexes();
+        await ensureProductIndexes();
         await ensureSeedData();
         await ensureUppercaseData();
         await ensureAttendanceClientLinks();
