@@ -305,10 +305,12 @@ async function resolvePublicClient({ clientId, nombre, telefono, instagram }) {
 router.get('/clients', async (req, res) => {
     try {
         const query = String(req.query.q || '').trim();
+        if (query.length < 2) {
+            return res.json({ clients: [] });
+        }
+
         const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 60, 120));
-        const filter = query.length >= 2
-            ? { nombre: new RegExp(escapeRegExp(query), 'i') }
-            : {};
+        const filter = { nombre: new RegExp(escapeRegExp(query), 'i') };
 
         const clients = await Client.find(filter)
             .select('nombre')

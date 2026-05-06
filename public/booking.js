@@ -35,7 +35,8 @@ const elements = {
     newClientModeBtn: $('newClientModeBtn'),
     existingClientPanel: $('existingClientPanel'),
     newClientPanel: $('newClientPanel'),
-    existingClientSelect: $('existingClientSelect'),
+    existingClientSearch: $('existingClientSearch'),
+    existingClientResults: $('existingClientResults'),
     selectedExistingClient: $('selectedExistingClient'),
     openNewClientModalBtn: $('openNewClientModalBtn'),
     newClientSummary: $('newClientSummary'),
@@ -55,6 +56,8 @@ const elements = {
 
 let carouselIndex = 0;
 let carouselTimer = null;
+let clientSearchTimer = null;
+let clientSearchSequence = 0;
 
 async function fetchJson(url, options = {}) {
     const response = await fetch(url, options);
@@ -144,17 +147,27 @@ function renderBarberOptions() {
     elements.barberSelect.innerHTML = options;
 }
 
-function renderExistingClientOptions() {
-    const baseOption = '<option value="">Selecciona un cliente</option>';
-    const options = state.existingClients
-        .map((client) => `<option value="${client._id}">${client.nombre}</option>`)
-        .join('');
+function renderExistingClientResults(query = '') {
+    const normalizedQuery = String(query || '').trim();
 
-    elements.existingClientSelect.innerHTML = `${baseOption}${options}`;
-
-    if (state.selectedClient?._id) {
-        elements.existingClientSelect.value = state.selectedClient._id;
+    if (normalizedQuery.length < 2) {
+        elements.existingClientResults.innerHTML = '';
+        elements.existingClientResults.classList.add('hidden');
+        return;
     }
+
+    if (!state.existingClients.length) {
+        elements.existingClientResults.innerHTML = '<div class="client-results-empty">No encontramos clientes con ese nombre.</div>';
+        elements.existingClientResults.classList.remove('hidden');
+        return;
+    }
+
+    elements.existingClientResults.innerHTML = state.existingClients
+        .map((client) => (
+            `<button type="button" class="client-result-btn${state.selectedClient?._id === client._id ? ' is-active' : ''}" data-client-id="${client._id}">${client.nombre}</button>`
+        ))
+        .join('');
+    elements.existingClientResults.classList.remove('hidden');
 }
 
 function renderClientMode() {
@@ -175,11 +188,16 @@ function renderSelectedClient() {
 
     elements.selectedExistingClient.textContent = `Cliente seleccionado: ${state.selectedClient.nombre}`;
     elements.selectedExistingClient.classList.remove('hidden');
+    elements.existingClientSearch.value = state.selectedClient.nombre;
+    elements.existingClientResults.classList.add('hidden');
 }
 
 function clearSelectedClient() {
     state.selectedClient = null;
-    elements.existingClientSelect.value = '';
+    state.existingClients = [];
+    elements.existingClientSearch.value = '';
+    elements.existingClientResults.innerHTML = '';
+    elements.existingClientResults.classList.add('hidden');
     renderSelectedClient();
 }
 
@@ -228,7 +246,7 @@ function renderTimeOptions() {
     elements.timeSelect.innerHTML = [
         '<option value="">Selecciona un horario</option>',
         ...state.availableSlots.map((slot) => (
-            `<option value="${slot.hora}">${slot.hora}${elements.barberSelect.value ? '' : ` - ${slot.barberNombre}`}</option>`
+            `<option value="${slot.hora}">${slot.hora}</option>`
         ))
     ].join('');
 
@@ -244,13 +262,51 @@ function setLoadingState(isLoading) {
     elements.barberSelect.disabled = isLoading;
     elements.bookingDate.disabled = isLoading;
     elements.timeSelect.disabled = isLoading;
-    elements.existingClientSelect.disabled = isLoading;
+    elements.existingClientSearch.disabled = isLoading;
 }
 
-async function loadExistingClients() {
-    const payload = await fetchJson('/api/public/clients?limit=200');
+async function loadExistingClients(query) {
+    const normalizedQuery = String(query || '').trim();
+    if (normalizedQuery.length < 2) {
+        state.existingClients = [];
+        renderExistingClientResults('');
+        return;
+    }
+
+    const payload = await fetchJson(`/api/public/clients?q=${encodeURIComponent(normalizedQuery)}&limit=12`);
     state.existingClients = payload.clients || [];
-    renderExistingClientOptions();
+    renderExistingClientResults(normalizedQuery);
+}
+
+function scheduleExistingClientSearch() {
+    window.clearTimeout(clientSearchTimer);
+
+    const query = elements.existingClientSearch.value.trim();
+    if (query.length < 2) {
+        state.selectedClient = null;
+        state.existingClients = [];
+        renderSelectedClient();
+        renderExistingClientResults('');
+        return;
+    }
+
+    const sequence = clientSearchSequence + 1;
+    clientSearchSequence = sequence;
+
+    clientSearchTimer = window.setTimeout(async () => {
+        try {
+            await loadExistingClients(query);
+            if (sequence !== clientSearchSequence) {
+                return;
+            }
+        } catch (error) {
+            if (sequence !== clientSearchSequence) {
+                return;
+            }
+
+            showMessage(error.message, 'error');
+        }
+    }, 220);
 }
 
 async function loadAvailabilityDays() {
@@ -410,7 +466,6 @@ async function submitBooking(event) {
         clearSelectedClient();
         state.newClientDraft = null;
         renderNewClientSummary();
-        await loadExistingClients();
         await loadAvailabilityDays();
     } catch (error) {
         showMessage(error.message, 'error');
@@ -461,9 +516,26 @@ function attachEvents() {
         });
     });
 
-    elements.existingClientSelect.addEventListener('change', () => {
-        const selectedId = elements.existingClientSelect.value;
+    elements.existingClientSearch.addEventListener('input', () => {
+        hideMessage();
+
+        if (state.selectedClient && elements.existingClientSearch.value.trim() !== state.selectedClient.nombre) {
+            state.selectedClient = null;
+            renderSelectedClient();
+        }
+
+        scheduleExistingClientSearch();
+    });
+
+    elements.existingClientResults.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-client-id]');
+        if (!button) {
+            return;
+        }
+
+        const selectedId = button.dataset.clientId;
         state.selectedClient = state.existingClients.find((item) => item._id === selectedId) || null;
+        renderExistingClientResults(elements.existingClientSearch.value);
         renderSelectedClient();
     });
 
@@ -593,7 +665,6 @@ async function init() {
     renderServiceOptions();
     renderBarberOptions();
     renderClientMode();
-    await loadExistingClients();
 
     elements.bookingDate.min = state.minDate;
 

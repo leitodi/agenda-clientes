@@ -440,6 +440,11 @@ button {
     gap: 8px;
 }
 
+.client-search-note {
+    color: var(--text-soft);
+    font-size: 0.82rem;
+}
+
 .picker-panel-compact .field-grid-compact {
     grid-template-columns: minmax(140px, 1fr) minmax(160px, 1fr);
 }

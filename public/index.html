@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="booking.css?v=20260506-5">
+    <link rel="stylesheet" href="booking.css?v=20260506-6">
 </head>
 <body>
     <div class="page-shell">
@@ -71,10 +71,9 @@
                                 <div id="existingClientPanel" class="client-panel">
                                     <label>
                                         Cliente
-                                        <select id="existingClientSelect">
-                                            <option value="">Selecciona un cliente</option>
-                                        </select>
+                                        <input id="existingClientSearch" type="text" placeholder="Escribe tu nombre">
                                     </label>
+                                    <div id="existingClientResults" class="client-results hidden"></div>
                                     <div id="selectedExistingClient" class="selected-client hidden"></div>
                                 </div>
 
@@ -161,6 +160,6 @@
         </div>
     </div>
 
-    <script src="booking.js?v=20260506-7"></script>
+    <script src="booking.js?v=20260506-8"></script>
 </body>
 </html>
