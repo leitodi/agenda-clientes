@@ -34,6 +34,8 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/agenda
 const ACTIVE_DB_NAME = process.env.MONGODB_DB_NAME || 'agenda_clientes';
 const STATIC_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, proxy-revalidate';
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const APP_MODE = String(process.env.APP_MODE || 'internal').trim().toLowerCase();
+const IS_RESERVATIONS_APP = APP_MODE === 'reservas';
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '20mb' }));
@@ -49,16 +51,32 @@ app.use((req, res, next) => {
     next();
 });
 
-app.get('/', (req, res) => {
+function sendInternalApp(res) {
     res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));
+}
+
+function sendReservationsApp(res) {
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+}
+
+app.get('/', (req, res) => {
+    if (IS_RESERVATIONS_APP) {
+        return sendReservationsApp(res);
+    }
+
+    return sendInternalApp(res);
 });
 
 app.get('/admin', (req, res) => {
-    res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));
+    if (IS_RESERVATIONS_APP) {
+        return res.status(404).send('No encontrado');
+    }
+
+    return sendInternalApp(res);
 });
 
 app.get('/reservas', (req, res) => {
-    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+    return sendReservationsApp(res);
 });
 
 app.use(express.static(PUBLIC_DIR, {
@@ -72,6 +90,7 @@ app.get('/api/health', (req, res) => {
         ok: true,
         timestamp: new Date().toISOString(),
         appVersion,
+        appMode: APP_MODE,
         configuredDbName: ACTIVE_DB_NAME,
         dbName: mongoose.connection?.name || '',
         dbHost: mongoose.connection?.host || '',

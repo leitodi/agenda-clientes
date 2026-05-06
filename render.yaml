@@ -7,5 +7,48 @@ services:
     startCommand: npm start
     autoDeploy: true
     envVars:
+      - key: APP_MODE
+        value: internal
       - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: AGENDA_USER
+        sync: false
+      - key: AGENDA_PASSWORD
+        sync: false
+      - key: PUBLIC_BOOKING_USER
+        sync: false
+      - key: PUBLIC_BOOKING_PASSWORD
+        sync: false
+
+  - type: web
+    name: reservas
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: APP_MODE
+        value: reservas
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: AGENDA_USER
+        sync: false
+      - key: AGENDA_PASSWORD
+        sync: false
+      - key: PUBLIC_BOOKING_USER
+        sync: false
+      - key: PUBLIC_BOOKING_PASSWORD
         sync: false
