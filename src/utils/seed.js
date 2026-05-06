@@ -35,6 +35,8 @@ async function ensureSeedData() {
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
     const agendaUsername = (process.env.AGENDA_USER || 'agenda').toLowerCase();
     const agendaPassword = process.env.AGENDA_PASSWORD || 'agenda123';
+    const publicBookingUsername = (process.env.PUBLIC_BOOKING_USER || 'reservasweb').toLowerCase();
+    const publicBookingPassword = process.env.PUBLIC_BOOKING_PASSWORD || 'reservasweb123';
 
     async function ensureAccessUser({ username, password, role, label }) {
         let user = await User.findOne({ username });
@@ -87,6 +89,13 @@ async function ensureSeedData() {
         password: agendaPassword,
         role: 'agenda',
         label: 'agenda'
+    });
+
+    await ensureAccessUser({
+        username: publicBookingUsername,
+        password: publicBookingPassword,
+        role: 'user',
+        label: 'reservas web'
     });
 
     const defaultServices = [

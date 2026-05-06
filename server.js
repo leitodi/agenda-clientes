@@ -17,6 +17,7 @@ const dashboardRoutes = require('./src/routes/dashboard');
 const clientRoutes = require('./src/routes/clients');
 const serviceRoutes = require('./src/routes/services');
 const productRoutes = require('./src/routes/products');
+const publicBookingRoutes = require('./src/routes/publicBooking');
 const Client = require('./src/models/Client');
 const Barber = require('./src/models/Barber');
 const Service = require('./src/models/Service');
@@ -82,6 +83,11 @@ app.use('/api/atenciones', attendanceRoutes);
 app.use('/api/reportes', reportRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/public', publicBookingRoutes);
+
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
 
 app.use((error, req, res, next) => {
     console.error('Error no controlado:', error);

@@ -50,6 +50,7 @@ const state = {
 };
 
 let turnosAhoraIntervalId = null;
+let reservasWebAlertIntervalId = null;
 let loadingRequests = 0;
 let loadingTimerId = null;
 const turnosAlertados = new Set();
@@ -2991,6 +2992,68 @@ async function cargarTodoInicial() {
     await cargarConfig();
 }
 
+function buildReservasWebAlertMessage(alerts) {
+    if (!Array.isArray(alerts) || !alerts.length) {
+        return '';
+    }
+
+    if (alerts.length === 1) {
+        const alert = alerts[0];
+        return `Llego una reserva web para ${alert.fecha} a las ${alert.hora} a nombre de ${alert.cliente || 'cliente'}${alert.peluquero ? ` con ${alert.peluquero}` : ''}.`;
+    }
+
+    const resumen = alerts
+        .slice(0, 3)
+        .map((alert) => `${alert.cliente || 'Cliente'} ${alert.fecha} ${alert.hora}`)
+        .join(' | ');
+
+    return `Llegaron ${alerts.length} reservas web nuevas. ${resumen}`;
+}
+
+async function revisarAlertasReservasWeb() {
+    if (!isAdminRole() || !state.token) {
+        return;
+    }
+
+    try {
+        const payload = await apiFetch('/api/dashboard/alertas-reservas-web', {
+            showLoading: false
+        });
+        const alerts = Array.isArray(payload?.alerts) ? payload.alerts : [];
+        if (!alerts.length) {
+            return;
+        }
+
+        showMessage(buildReservasWebAlertMessage(alerts), 'success');
+
+        if (!isAgendaRole() && !document.getElementById('tab-turnos')?.classList.contains('hidden')) {
+            await cargarTurnos();
+        }
+    } catch (error) {
+        console.warn('No se pudieron cargar alertas de reservas web:', error.message);
+    }
+}
+
+function stopReservasWebAlertWatcher() {
+    if (reservasWebAlertIntervalId) {
+        clearInterval(reservasWebAlertIntervalId);
+        reservasWebAlertIntervalId = null;
+    }
+}
+
+function startReservasWebAlertWatcher() {
+    stopReservasWebAlertWatcher();
+
+    if (!isAdminRole()) {
+        return;
+    }
+
+    revisarAlertasReservasWeb().catch(() => {});
+    reservasWebAlertIntervalId = window.setInterval(() => {
+        revisarAlertasReservasWeb().catch(() => {});
+    }, 30000);
+}
+
 function showApp() {
     document.body.classList.add('app-authenticated');
     $('loginView').classList.add('hidden');
@@ -2998,11 +3061,13 @@ function showApp() {
     $('sessionInfo').textContent = `Usuario: ${state.user.username} (${state.user.role})`;
     applyRoleVisibility();
     setTab(isAgendaRole() ? 'turnos' : 'dashboard');
+    startReservasWebAlertWatcher();
 }
 
 function showLogin() {
     document.body.classList.remove('app-authenticated');
     state.asesorIaResultado = null;
+    stopReservasWebAlertWatcher();
     if ($('asesorIaForm')) {
         resetAsesorIa();
     }
@@ -3013,6 +3078,7 @@ function showLogin() {
 async function restoreSession() {
     if (!state.token) {
         stopTurnosAhoraWatcher();
+        stopReservasWebAlertWatcher();
         state.turnosDelMomento = [];
         turnosAlertados.clear();
         renderTurnosAhoraPanel();
@@ -3038,6 +3104,7 @@ async function restoreSession() {
         state.token = null;
         state.user = null;
         stopTurnosAhoraWatcher();
+        stopReservasWebAlertWatcher();
         turnosAlertados.clear();
         showLogin();
     }

@@ -3,7 +3,7 @@ const Appointment = require('../models/Appointment');
 const Attendance = require('../models/Attendance');
 const Barber = require('../models/Barber');
 const Client = require('../models/Client');
-const { authRequired, notAgendaRequired } = require('../middleware/auth');
+const { authRequired, notAgendaRequired, adminRequired } = require('../middleware/auth');
 const { getLegacyAttendancesByDateRange, getLegacyBirthdayData } = require('../utils/legacyAttendanceStore');
 
 const router = express.Router();
@@ -165,6 +165,42 @@ router.get('/cumpleanos', authRequired, async (req, res) => {
             clientes: [],
             peluqueros: []
         });
+    }
+});
+
+router.get('/alertas-reservas-web', authRequired, adminRequired, async (req, res) => {
+    try {
+        const reservas = await Appointment.find({
+            origenReserva: 'web',
+            alertaAdminVistaEn: null
+        })
+            .populate('peluquero', 'nombre')
+            .sort({ createdAt: 1 })
+            .limit(20);
+
+        if (!reservas.length) {
+            return res.json({ alerts: [] });
+        }
+
+        const seenAt = new Date();
+        await Appointment.updateMany(
+            { _id: { $in: reservas.map((item) => item._id) } },
+            { $set: { alertaAdminVistaEn: seenAt } }
+        );
+
+        return res.json({
+            alerts: reservas.map((reserva) => ({
+                id: reserva._id,
+                fecha: reserva.fecha,
+                hora: reserva.horaInicio,
+                cliente: reserva.cliente || '',
+                peluquero: reserva.peluquero?.nombre || 'Primero disponible',
+                servicio: reserva.servicioNombre || ''
+            }))
+        });
+    } catch (error) {
+        console.error('Error cargando alertas de reservas web:', error);
+        return res.json({ alerts: [] });
     }
 });
 
