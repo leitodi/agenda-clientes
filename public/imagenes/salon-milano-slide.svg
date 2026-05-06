@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Salon Milano</title>
+  <desc id="desc">Slide visual de Salon Milano para el carrusel.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#151618"/>
+      <stop offset="45%" stop-color="#242830"/>
+      <stop offset="100%" stop-color="#0d0d0f"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f1d47a"/>
+      <stop offset="55%" stop-color="#d4af37"/>
+      <stop offset="100%" stop-color="#8d6910"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#233954"/>
+      <stop offset="100%" stop-color="#1a2d44"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="1330" cy="210" r="220" fill="#d4af37" opacity="0.08"/>
+  <circle cx="260" cy="740" r="220" fill="#d4af37" opacity="0.06"/>
+  <rect x="76" y="84" width="1448" height="170" rx="36" fill="url(#panel)"/>
+  <rect x="76" y="642" width="1448" height="72" rx="36" fill="#141518" opacity="0.88"/>
+  <path d="M106 614 C344 524 594 480 842 480 C1076 480 1298 520 1492 612" fill="none" stroke="url(#gold)" stroke-opacity="0.26" stroke-width="6"/>
+  <text x="800" y="230" text-anchor="middle" fill="#eef3fa" font-size="142" font-family="Arial Black, Arial, sans-serif" letter-spacing="6">SALON MILANO</text>
+  <text x="800" y="420" text-anchor="middle" fill="#f7edd2" font-size="80" font-family="Georgia, serif">More than a Barbershop</text>
+  <text x="800" y="690" text-anchor="middle" fill="url(#gold)" font-size="38" font-family="Arial, sans-serif" letter-spacing="14">RESERVAS ONLINE</text>
+</svg>
