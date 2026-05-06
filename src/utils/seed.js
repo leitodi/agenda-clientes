@@ -20,6 +20,32 @@ function toDateString(date) {
     return date.toISOString().slice(0, 10);
 }
 
+function normalizeIdentity(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+function resolveMatchingBarberForUser(username, barbers) {
+    const normalizedUsername = normalizeIdentity(username);
+    if (!normalizedUsername) {
+        return null;
+    }
+
+    const matches = barbers.filter((barber) => {
+        const barberName = normalizeIdentity(barber.nombre);
+        if (!barberName) {
+            return false;
+        }
+
+        return (
+            barberName === normalizedUsername
+            || (normalizedUsername.length >= 4 && barberName.startsWith(normalizedUsername))
+            || (barberName.length >= 4 && normalizedUsername.startsWith(barberName))
+        );
+    });
+
+    return matches.length === 1 ? matches[0] : null;
+}
+
 function getLastWeekMonday() {
     const now = new Date();
     const currentMonday = new Date(now);
@@ -209,6 +235,39 @@ async function ensureSeedData() {
 
     if (!barbers.length) {
         return;
+    }
+
+    try {
+        const usersWithoutBarber = await User.find({
+            role: { $in: ['user', 'agenda'] },
+            $or: [
+                { barberId: { $exists: false } },
+                { barberId: null }
+            ]
+        }).select('_id username role barberId');
+
+        const operations = usersWithoutBarber
+            .map((user) => {
+                const matchedBarber = resolveMatchingBarberForUser(user.username, barbers);
+                if (!matchedBarber) {
+                    return null;
+                }
+
+                return {
+                    updateOne: {
+                        filter: { _id: user._id },
+                        update: { $set: { barberId: matchedBarber._id } }
+                    }
+                };
+            })
+            .filter(Boolean);
+
+        if (operations.length) {
+            await User.bulkWrite(operations);
+            console.log(`Usuarios asociados automaticamente a peluqueros: ${operations.length}`);
+        }
+    } catch (error) {
+        console.warn('No se pudieron asociar usuarios con peluqueros:', error.message);
     }
 
     const usuarioAdmin = await User.findOne({ username: adminUsername });

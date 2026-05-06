@@ -1,9 +1,30 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const Barber = require('../models/Barber');
 const { authRequired, signToken } = require('../middleware/auth');
 const { findUserByUsername, findUserById, normalizeUsername } = require('../utils/userStore');
 
 const router = express.Router();
+
+async function buildUserResponse(user) {
+    const barberId = user?.barberId ? String(user.barberId) : '';
+    const barber = barberId
+        ? await Barber.findById(barberId).select('nombre')
+        : null;
+
+    return {
+        id: user._id.toString(),
+        _id: user._id,
+        username: user.username,
+        passwordVisible: user.passwordVisible,
+        role: user.role,
+        barberId,
+        barberNombre: barber?.nombre || '',
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        source: user.source || 'primary'
+    };
+}
 
 router.post('/login', async (req, res) => {
     const { username, password } = req.body;
@@ -25,15 +46,11 @@ router.post('/login', async (req, res) => {
     }
 
     const token = signToken(user);
+    const userResponse = await buildUserResponse(user);
 
     return res.json({
         token,
-        user: {
-            id: user._id.toString(),
-            username: user.username,
-            role: user.role,
-            source: user.source || 'primary'
-        }
+        user: userResponse
     });
 });
 
@@ -44,15 +61,7 @@ router.get('/me', authRequired, async (req, res) => {
         return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    return res.json({
-        _id: user._id,
-        username: user.username,
-        passwordVisible: user.passwordVisible,
-        role: user.role,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        source: user.source || 'primary'
-    });
+    return res.json(await buildUserResponse(user));
 });
 
 router.post('/logout', (req, res) => {

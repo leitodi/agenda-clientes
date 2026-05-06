@@ -50,7 +50,7 @@ const state = {
 };
 
 let turnosAhoraIntervalId = null;
-let reservasWebAlertIntervalId = null;
+let accountAlertIntervalId = null;
 let loadingRequests = 0;
 let loadingTimerId = null;
 const turnosAlertados = new Set();
@@ -78,6 +78,10 @@ function isAgendaRole() {
 
 function isAdminRole() {
     return state.user?.role === 'admin';
+}
+
+function hasLinkedBarberAccount() {
+    return Boolean(String(state.user?.barberId || '').trim());
 }
 
 function escapeHtml(value) {
@@ -526,7 +530,10 @@ async function ensureTabData(tabName, force = false) {
             cargarReporteDia()
         ]);
     } else if (tabName === 'usuarios') {
-        await cargarUsuarios();
+        await Promise.all([
+            cargarPeluqueros(),
+            cargarUsuarios()
+        ]);
     }
 
     state.loadedTabs[tabName] = true;
@@ -606,6 +613,28 @@ function completarSelectPeluqueros() {
 
         if (currentReport && activos.some((p) => p.id === currentReport)) {
             reportePeluqueroSelect.value = currentReport;
+        }
+    }
+
+    const userBarberOptions = ['<option value="">Sin asociar</option>']
+        .concat(activos.map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`))
+        .join('');
+
+    const usuarioPeluqueroSelect = $('usuarioPeluquero');
+    if (usuarioPeluqueroSelect) {
+        const currentUserBarber = usuarioPeluqueroSelect.value;
+        usuarioPeluqueroSelect.innerHTML = userBarberOptions;
+        if (currentUserBarber && activos.some((p) => p.id === currentUserBarber)) {
+            usuarioPeluqueroSelect.value = currentUserBarber;
+        }
+    }
+
+    const editarUsuarioPeluqueroSelect = $('editarUsuarioPeluquero');
+    if (editarUsuarioPeluqueroSelect) {
+        const currentEditBarber = editarUsuarioPeluqueroSelect.value;
+        editarUsuarioPeluqueroSelect.innerHTML = userBarberOptions;
+        if (currentEditBarber && activos.some((p) => p.id === currentEditBarber)) {
+            editarUsuarioPeluqueroSelect.value = currentEditBarber;
         }
     }
 }
@@ -1769,6 +1798,7 @@ function openEditarUsuarioModal(user) {
     $('editarUsuarioId').value = user._id || user.id;
     $('editarUsuarioNombre').value = user.username || '';
     $('editarUsuarioRol').value = user.role || 'user';
+    $('editarUsuarioPeluquero').value = user.barberId || '';
     $('editarUsuarioPassword').value = '';
     $('editarUsuarioModal').classList.remove('hidden');
 }
@@ -1810,6 +1840,7 @@ function renderUsuariosTable() {
             <td>${escapeHtml(u.username)}</td>
             <td><code>${escapeHtml(u.passwordVisible || '(sin registro)')}</code></td>
             <td>${escapeHtml(u.role)}</td>
+            <td>${escapeHtml(u.barberNombre || '-')}</td>
             <td>${new Date(u.createdAt).toLocaleDateString('es-AR')}</td>
             <td><button class="btn" type="button" data-action="edit-user" data-id="${u._id || u.id}">Editar</button></td>
         </tr>
@@ -2992,31 +3023,38 @@ async function cargarTodoInicial() {
     await cargarConfig();
 }
 
-function buildReservasWebAlertMessage(alerts) {
+function buildAccountAlertMessage(alerts) {
     if (!Array.isArray(alerts) || !alerts.length) {
         return '';
     }
 
-    if (alerts.length === 1) {
-        const alert = alerts[0];
-        return `Llego una reserva web para ${alert.fecha} a las ${alert.hora} a nombre de ${alert.cliente || 'cliente'}${alert.peluquero ? ` con ${alert.peluquero}` : ''}.`;
-    }
-
-    const resumen = alerts
+    return alerts
         .slice(0, 3)
-        .map((alert) => `${alert.cliente || 'Cliente'} ${alert.fecha} ${alert.hora}`)
-        .join(' | ');
+        .map((alert) => {
+            if (alert.type === 'upcoming_turn') {
+                if (isAdminRole()) {
+                    return `Recordatorio: a las ${alert.hora} hay un turno de ${alert.cliente || 'cliente'} con ${alert.peluquero || 'peluquero'}.`;
+                }
 
-    return `Llegaron ${alerts.length} reservas web nuevas. ${resumen}`;
+                return `Recordatorio: a las ${alert.hora} tienes turno con ${alert.cliente || 'cliente'}.`;
+            }
+
+            if (isAdminRole()) {
+                return `Llego una reserva web para ${alert.fecha} a las ${alert.hora} a nombre de ${alert.cliente || 'cliente'}${alert.peluquero ? ` con ${alert.peluquero}` : ''}.`;
+            }
+
+            return `Te reservaron un turno web para ${alert.fecha} a las ${alert.hora} a nombre de ${alert.cliente || 'cliente'}.`;
+        })
+        .join(' ');
 }
 
-async function revisarAlertasReservasWeb() {
-    if (!isAdminRole() || !state.token) {
+async function revisarAlertasCuenta() {
+    if (!state.token || (!isAdminRole() && !hasLinkedBarberAccount())) {
         return;
     }
 
     try {
-        const payload = await apiFetch('/api/dashboard/alertas-reservas-web', {
+        const payload = await apiFetch('/api/dashboard/alertas-cuenta', {
             showLoading: false
         });
         const alerts = Array.isArray(payload?.alerts) ? payload.alerts : [];
@@ -3024,33 +3062,33 @@ async function revisarAlertasReservasWeb() {
             return;
         }
 
-        showMessage(buildReservasWebAlertMessage(alerts), 'success');
+        showMessage(buildAccountAlertMessage(alerts), 'success');
 
         if (!isAgendaRole() && !document.getElementById('tab-turnos')?.classList.contains('hidden')) {
             await cargarTurnos();
         }
     } catch (error) {
-        console.warn('No se pudieron cargar alertas de reservas web:', error.message);
+        console.warn('No se pudieron cargar alertas de cuenta:', error.message);
     }
 }
 
-function stopReservasWebAlertWatcher() {
-    if (reservasWebAlertIntervalId) {
-        clearInterval(reservasWebAlertIntervalId);
-        reservasWebAlertIntervalId = null;
+function stopAccountAlertWatcher() {
+    if (accountAlertIntervalId) {
+        clearInterval(accountAlertIntervalId);
+        accountAlertIntervalId = null;
     }
 }
 
-function startReservasWebAlertWatcher() {
-    stopReservasWebAlertWatcher();
+function startAccountAlertWatcher() {
+    stopAccountAlertWatcher();
 
-    if (!isAdminRole()) {
+    if (!isAdminRole() && !hasLinkedBarberAccount()) {
         return;
     }
 
-    revisarAlertasReservasWeb().catch(() => {});
-    reservasWebAlertIntervalId = window.setInterval(() => {
-        revisarAlertasReservasWeb().catch(() => {});
+    revisarAlertasCuenta().catch(() => {});
+    accountAlertIntervalId = window.setInterval(() => {
+        revisarAlertasCuenta().catch(() => {});
     }, 30000);
 }
 
@@ -3061,13 +3099,13 @@ function showApp() {
     $('sessionInfo').textContent = `Usuario: ${state.user.username} (${state.user.role})`;
     applyRoleVisibility();
     setTab(isAgendaRole() ? 'turnos' : 'dashboard');
-    startReservasWebAlertWatcher();
+    startAccountAlertWatcher();
 }
 
 function showLogin() {
     document.body.classList.remove('app-authenticated');
     state.asesorIaResultado = null;
-    stopReservasWebAlertWatcher();
+    stopAccountAlertWatcher();
     if ($('asesorIaForm')) {
         resetAsesorIa();
     }
@@ -3078,7 +3116,7 @@ function showLogin() {
 async function restoreSession() {
     if (!state.token) {
         stopTurnosAhoraWatcher();
-        stopReservasWebAlertWatcher();
+        stopAccountAlertWatcher();
         state.turnosDelMomento = [];
         turnosAlertados.clear();
         renderTurnosAhoraPanel();
@@ -3091,7 +3129,9 @@ async function restoreSession() {
         state.user = {
             id: me._id,
             username: me.username,
-            role: me.role
+            role: me.role,
+            barberId: me.barberId || '',
+            barberNombre: me.barberNombre || ''
         };
         localStorage.setItem('agendaUser', JSON.stringify(state.user));
 
@@ -3104,7 +3144,7 @@ async function restoreSession() {
         state.token = null;
         state.user = null;
         stopTurnosAhoraWatcher();
-        stopReservasWebAlertWatcher();
+        stopAccountAlertWatcher();
         turnosAlertados.clear();
         showLogin();
     }
@@ -3970,7 +4010,8 @@ function attachEvents() {
                 body: {
                     username: $('usuarioNombre').value.trim(),
                     password: $('usuarioPassword').value,
-                    role: $('usuarioRol').value
+                    role: $('usuarioRol').value,
+                    barberId: $('usuarioPeluquero').value || ''
                 }
             });
 
@@ -4014,6 +4055,7 @@ function attachEvents() {
         const userId = $('editarUsuarioId').value;
         const username = $('editarUsuarioNombre').value.trim();
         const role = $('editarUsuarioRol').value;
+        const barberId = $('editarUsuarioPeluquero').value || '';
         const password = $('editarUsuarioPassword').value;
 
         if (!userId) {
@@ -4032,6 +4074,7 @@ function attachEvents() {
                 body: {
                     username,
                     role,
+                    barberId,
                     password: String(password || '').trim()
                 }
             });

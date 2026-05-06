@@ -694,6 +694,12 @@
                             <option value="admin">Admin</option>
                         </select>
                     </label>
+                    <label>
+                        Peluquero asociado
+                        <select id="usuarioPeluquero">
+                            <option value="">Sin asociar</option>
+                        </select>
+                    </label>
                     <button type="submit" class="btn primary">Crear usuario</button>
                 </form>
 
@@ -704,6 +710,7 @@
                                 <th>Usuario</th>
                                 <th>Contraseña</th>
                                 <th>Rol</th>
+                                <th>Peluquero</th>
                                 <th>Alta</th>
                                 <th>Acciones</th>
                             </tr>
@@ -788,6 +795,12 @@
                         <option value="user">Usuario</option>
                         <option value="agenda">Solo agenda</option>
                         <option value="admin">Admin</option>
+                    </select>
+                </label>
+                <label>
+                    Peluquero asociado
+                    <select id="editarUsuarioPeluquero">
+                        <option value="">Sin asociar</option>
                     </select>
                 </label>
                 <label>

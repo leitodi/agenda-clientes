@@ -39,7 +39,8 @@ function signToken(user) {
             id: user._id.toString(),
             username: user.username,
             role: user.role,
-            source: user.source || 'primary'
+            source: user.source || 'primary',
+            barberId: user.barberId ? user.barberId.toString() : ''
         },
         JWT_SECRET,
         { expiresIn: '12h' }

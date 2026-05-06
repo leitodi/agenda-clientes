@@ -5,8 +5,10 @@ const Barber = require('../models/Barber');
 const Client = require('../models/Client');
 const { authRequired, notAgendaRequired, adminRequired } = require('../middleware/auth');
 const { getLegacyAttendancesByDateRange, getLegacyBirthdayData } = require('../utils/legacyAttendanceStore');
+const { findUserById } = require('../utils/userStore');
 
 const router = express.Router();
+const APP_TIME_ZONE = process.env.APP_TIME_ZONE || 'America/Argentina/Buenos_Aires';
 
 function normalizeName(value) {
     return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -105,6 +107,155 @@ function mergeBirthdayPeople(primary, secondary, type) {
     });
 }
 
+function getCurrentAppDateContext() {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: APP_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+
+    const parts = Object.fromEntries(
+        formatter
+            .formatToParts(new Date())
+            .filter((part) => part.type !== 'literal')
+            .map((part) => [part.type, part.value])
+    );
+
+    const fecha = `${parts.year}-${parts.month}-${parts.day}`;
+    const minutosActuales = (Number(parts.hour || 0) * 60) + Number(parts.minute || 0);
+
+    return {
+        fecha,
+        minutosActuales
+    };
+}
+
+function mapReservationAlert(reserva, audience) {
+    return {
+        id: reserva._id,
+        type: 'new_web_reservation',
+        audience,
+        fecha: reserva.fecha,
+        hora: reserva.horaInicio,
+        cliente: reserva.cliente || '',
+        peluquero: reserva.peluquero?.nombre || 'Primero disponible',
+        servicio: reserva.servicioNombre || ''
+    };
+}
+
+function mapReminderAlert(turno, audience) {
+    return {
+        id: turno._id,
+        type: 'upcoming_turn',
+        audience,
+        fecha: turno.fecha,
+        hora: turno.horaInicio,
+        cliente: turno.cliente || '',
+        peluquero: turno.peluquero?.nombre || 'Sin peluquero',
+        servicio: turno.servicioNombre || ''
+    };
+}
+
+async function takeAdminReservationAlerts() {
+    const reservas = await Appointment.find({
+        origenReserva: 'web',
+        alertaAdminVistaEn: null
+    })
+        .populate('peluquero', 'nombre')
+        .sort({ createdAt: 1 })
+        .limit(20);
+
+    if (!reservas.length) {
+        return [];
+    }
+
+    const seenAt = new Date();
+    await Appointment.updateMany(
+        { _id: { $in: reservas.map((item) => item._id) } },
+        { $set: { alertaAdminVistaEn: seenAt } }
+    );
+
+    return reservas.map((reserva) => mapReservationAlert(reserva, 'admin'));
+}
+
+async function takeBarberReservationAlerts(barberId) {
+    const reservas = await Appointment.find({
+        origenReserva: 'web',
+        peluquero: barberId,
+        alertaPeluqueroVistaEn: null
+    })
+        .populate('peluquero', 'nombre')
+        .sort({ createdAt: 1 })
+        .limit(20);
+
+    if (!reservas.length) {
+        return [];
+    }
+
+    const seenAt = new Date();
+    await Appointment.updateMany(
+        { _id: { $in: reservas.map((item) => item._id) } },
+        { $set: { alertaPeluqueroVistaEn: seenAt } }
+    );
+
+    return reservas.map((reserva) => mapReservationAlert(reserva, 'barber'));
+}
+
+async function takeAdminReminderAlerts() {
+    const { fecha, minutosActuales } = getCurrentAppDateContext();
+    const turnos = await Appointment.find({
+        fecha,
+        estado: 'pendiente',
+        inicioMinutos: { $gt: minutosActuales, $lte: minutosActuales + 60 },
+        alertaRecordatorioAdminVistaEn: null
+    })
+        .populate('peluquero', 'nombre')
+        .sort({ inicioMinutos: 1 })
+        .limit(20);
+
+    if (!turnos.length) {
+        return [];
+    }
+
+    const seenAt = new Date();
+    await Appointment.updateMany(
+        { _id: { $in: turnos.map((item) => item._id) } },
+        { $set: { alertaRecordatorioAdminVistaEn: seenAt } }
+    );
+
+    return turnos.map((turno) => mapReminderAlert(turno, 'admin'));
+}
+
+async function takeBarberReminderAlerts(barberId) {
+    const { fecha, minutosActuales } = getCurrentAppDateContext();
+    const turnos = await Appointment.find({
+        fecha,
+        estado: 'pendiente',
+        peluquero: barberId,
+        inicioMinutos: { $gt: minutosActuales, $lte: minutosActuales + 60 },
+        alertaRecordatorioPeluqueroVistaEn: null
+    })
+        .populate('peluquero', 'nombre')
+        .sort({ inicioMinutos: 1 })
+        .limit(20);
+
+    if (!turnos.length) {
+        return [];
+    }
+
+    const seenAt = new Date();
+    await Appointment.updateMany(
+        { _id: { $in: turnos.map((item) => item._id) } },
+        { $set: { alertaRecordatorioPeluqueroVistaEn: seenAt } }
+    );
+
+    return turnos.map((turno) => mapReminderAlert(turno, 'barber'));
+}
+
 router.get('/', authRequired, notAgendaRequired, async (req, res) => {
     try {
         const { fecha } = req.query;
@@ -200,6 +351,36 @@ router.get('/alertas-reservas-web', authRequired, adminRequired, async (req, res
         });
     } catch (error) {
         console.error('Error cargando alertas de reservas web:', error);
+        return res.json({ alerts: [] });
+    }
+});
+
+router.get('/alertas-cuenta', authRequired, async (req, res) => {
+    try {
+        const user = await findUserById(req.user.id, req.user.source || 'legacy');
+        if (!user) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        let alerts = [];
+
+        if (req.user.role === 'admin') {
+            const [reservationAlerts, reminderAlerts] = await Promise.all([
+                takeAdminReservationAlerts(),
+                takeAdminReminderAlerts()
+            ]);
+            alerts = reservationAlerts.concat(reminderAlerts);
+        } else if (user.barberId) {
+            const [reservationAlerts, reminderAlerts] = await Promise.all([
+                takeBarberReservationAlerts(user.barberId),
+                takeBarberReminderAlerts(user.barberId)
+            ]);
+            alerts = reservationAlerts.concat(reminderAlerts);
+        }
+
+        return res.json({ alerts });
+    } catch (error) {
+        console.error('Error cargando alertas de cuenta:', error);
         return res.json({ alerts: [] });
     }
 });

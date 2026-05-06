@@ -84,7 +84,7 @@ async function listUsers() {
     if (legacyModel) {
         const legacyUsers = await legacyModel
             .find()
-            .select('username role createdAt passwordVisible')
+            .select('username role createdAt passwordVisible barberId')
             .sort({ createdAt: -1 });
 
         return legacyUsers.map((user) => ({
@@ -92,13 +92,14 @@ async function listUsers() {
             username: user.username,
             passwordVisible: user.passwordVisible,
             role: user.role,
+            barberId: user.barberId ? String(user.barberId) : '',
             createdAt: user.createdAt,
             source: 'legacy'
         }));
     }
 
     const primaryUsers = await User.find()
-        .select('username role createdAt passwordVisible')
+        .select('username role createdAt passwordVisible barberId')
         .sort({ createdAt: -1 });
 
     return primaryUsers.map((user) => ({
@@ -106,12 +107,13 @@ async function listUsers() {
         username: user.username,
         passwordVisible: user.passwordVisible,
         role: user.role,
+        barberId: user.barberId ? String(user.barberId) : '',
         createdAt: user.createdAt,
         source: 'primary'
     }));
 }
 
-async function createUser({ username, passwordHash, passwordVisible, role }) {
+async function createUser({ username, passwordHash, passwordVisible, role, barberId = null }) {
     const legacyModel = await getLegacyUserModel();
     const model = legacyModel || User;
 
@@ -119,7 +121,8 @@ async function createUser({ username, passwordHash, passwordVisible, role }) {
         username: normalizeUsername(username),
         passwordHash,
         passwordVisible,
-        role
+        role,
+        barberId
     });
 
     return {
@@ -127,6 +130,7 @@ async function createUser({ username, passwordHash, passwordVisible, role }) {
         username: user.username,
         passwordVisible: user.passwordVisible,
         role: user.role,
+        barberId: user.barberId ? String(user.barberId) : '',
         createdAt: user.createdAt,
         source: legacyModel ? 'legacy' : 'primary'
     };

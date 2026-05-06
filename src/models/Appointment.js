@@ -24,6 +24,9 @@ const appointmentSchema = new mongoose.Schema(
         estadoActualizadoEn: { type: Date, default: null },
         origenReserva: { type: String, enum: ['manual', 'web'], default: 'manual' },
         alertaAdminVistaEn: { type: Date, default: null },
+        alertaPeluqueroVistaEn: { type: Date, default: null },
+        alertaRecordatorioAdminVistaEn: { type: Date, default: null },
+        alertaRecordatorioPeluqueroVistaEn: { type: Date, default: null },
         peluquero: { type: mongoose.Schema.Types.ObjectId, ref: 'Barber', default: null },
         creadoPor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
     },
