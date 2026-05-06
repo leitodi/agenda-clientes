@@ -33,6 +33,7 @@ const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/agenda_clientes';
 const ACTIVE_DB_NAME = process.env.MONGODB_DB_NAME || 'agenda_clientes';
 const STATIC_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, proxy-revalidate';
+const PUBLIC_DIR = path.join(__dirname, 'public');
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '20mb' }));
@@ -48,7 +49,19 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.static(path.join(__dirname, 'public'), {
+app.get('/', (req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));
+});
+
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));
+});
+
+app.get('/reservas', (req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+app.use(express.static(PUBLIC_DIR, {
     etag: false,
     lastModified: false,
     maxAge: 0
@@ -84,10 +97,6 @@ app.use('/api/reportes', reportRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/public', publicBookingRoutes);
-
-app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
 
 app.use((error, req, res, next) => {
     console.error('Error no controlado:', error);
