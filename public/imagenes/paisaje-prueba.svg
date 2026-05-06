@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Paisaje de prueba</title>
+  <desc id="desc">Ilustracion de un paisaje con montanas, cielo y lago para el carrusel.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#12233f"/>
+      <stop offset="45%" stop-color="#315f8e"/>
+      <stop offset="100%" stop-color="#f3b46d"/>
+    </linearGradient>
+    <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#274f71"/>
+      <stop offset="100%" stop-color="#15283e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <circle cx="1270" cy="210" r="88" fill="#ffd774" opacity="0.92"/>
+  <path d="M0 500 C140 430 260 420 390 470 C550 530 640 550 800 500 C950 452 1080 410 1280 455 C1410 485 1500 535 1600 560 L1600 900 L0 900 Z" fill="#203c36"/>
+  <path d="M0 570 C150 500 270 500 420 550 C590 607 700 620 850 575 C1000 530 1120 485 1290 510 C1430 530 1510 590 1600 640 L1600 900 L0 900 Z" fill="#315448"/>
+  <path d="M0 650 C130 620 250 615 390 640 C560 670 700 692 860 664 C1030 635 1160 610 1330 625 C1450 637 1545 665 1600 690 L1600 900 L0 900 Z" fill="url(#lake)"/>
+  <path d="M0 702 C180 722 320 722 470 706 C630 688 800 688 970 706 C1120 722 1310 726 1600 708 L1600 900 L0 900 Z" fill="#214861" opacity="0.72"/>
+  <text x="86" y="128" fill="#fff8ea" font-size="64" font-family="Georgia, serif">Paisaje de prueba</text>
+</svg>
