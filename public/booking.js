@@ -475,6 +475,11 @@ async function submitBooking(event) {
 }
 
 function buildCarouselDots(slides) {
+    if (!slides.length) {
+        elements.carouselDots.innerHTML = '';
+        return;
+    }
+
     elements.carouselDots.innerHTML = slides
         .map((_, index) => `<button type="button" class="carousel-dot ${index === 0 ? 'is-active' : ''}" data-index="${index}" aria-label="Ir a la imagen ${index + 1}"></button>`)
         .join('');
@@ -483,6 +488,10 @@ function buildCarouselDots(slides) {
 function renderCarousel(index) {
     const slides = Array.from(elements.carouselTrack.querySelectorAll('.carousel-slide'));
     const dots = Array.from(elements.carouselDots.querySelectorAll('.carousel-dot'));
+    if (!slides.length) {
+        return;
+    }
+
     carouselIndex = (index + slides.length) % slides.length;
 
     slides.forEach((slide, slideIndex) => {
@@ -496,9 +505,22 @@ function renderCarousel(index) {
 
 function restartCarouselTimer() {
     window.clearInterval(carouselTimer);
+
+    const slides = Array.from(elements.carouselTrack.querySelectorAll('.carousel-slide'));
+    if (slides.length <= 1) {
+        return;
+    }
+
     carouselTimer = window.setInterval(() => {
         renderCarousel(carouselIndex + 1);
     }, 5000);
+}
+
+function initCarousel() {
+    const slides = Array.from(elements.carouselTrack.querySelectorAll('.carousel-slide'));
+    buildCarouselDots(slides);
+    renderCarousel(0);
+    restartCarouselTimer();
 }
 
 function attachEvents() {
@@ -654,6 +676,9 @@ function attachEvents() {
 }
 
 async function init() {
+    attachEvents();
+    initCarousel();
+
     const payload = await fetchJson('/api/public/config');
 
     state.business = payload.business;
@@ -667,12 +692,6 @@ async function init() {
     renderClientMode();
 
     elements.bookingDate.min = state.minDate;
-
-    const slides = Array.from(elements.carouselTrack.querySelectorAll('.carousel-slide'));
-    buildCarouselDots(slides);
-    renderCarousel(0);
-    restartCarouselTimer();
-    attachEvents();
 
     if (state.services.length) {
         await loadAvailabilityDays();
