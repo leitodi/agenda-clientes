@@ -3296,8 +3296,8 @@ function attachEvents() {
             await activateTab(isAgendaRole() ? 'turnos' : 'dashboard');
             showMessage('Sesion iniciada correctamente');
         } catch (error) {
-            const message = /usuario o contrasena incorrectos|credenciales invalidas/i.test(String(error.message || ''))
-                ? 'Usuario o contrasena incorrectos'
+            const message = /contrasena incorrecta|usuario o contrasena incorrectos|credenciales invalidas/i.test(String(error.message || ''))
+                ? 'Contrasena incorrecta'
                 : error.message;
             showMessage(message, 'error');
         }
