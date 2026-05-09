@@ -31,6 +31,18 @@
             </form>
         </section>
 
+        <div id="appMessage" class="message hidden">
+            <span id="appMessageText"></span>
+            <button id="appMessageOk" class="btn" type="button">OK</button>
+        </div>
+
+        <div id="appLoading" class="loading-overlay hidden" aria-live="polite" aria-busy="true">
+            <div class="loading-card">
+                <div class="loading-spinner"></div>
+                <p id="appLoadingText">Cargando...</p>
+            </div>
+        </div>
+
         <section id="appView" class="hidden">
             <header class="topbar card">
                 <div class="topbar-copy">
@@ -40,18 +52,6 @@
                 </div>
                 <button id="logoutBtn" class="btn danger" type="button">Cerrar sesión</button>
             </header>
-
-            <div id="appMessage" class="message hidden">
-                <span id="appMessageText"></span>
-                <button id="appMessageOk" class="btn" type="button">OK</button>
-            </div>
-
-            <div id="appLoading" class="loading-overlay hidden" aria-live="polite" aria-busy="true">
-                <div class="loading-card">
-                    <div class="loading-spinner"></div>
-                    <p id="appLoadingText">Cargando...</p>
-                </div>
-            </div>
 
             <nav class="tabs card">
                 <button class="tab-btn active restricted-agenda" data-tab="dashboard">Dashboard</button>
@@ -875,6 +875,6 @@
         </div>
     </div>
 
-    <script src="script.js?v=2.0.3"></script>
+    <script src="script.js?v=2.0.4"></script>
 </body>
 </html>
