@@ -3,9 +3,9 @@ const Attendance = require('../models/Attendance');
 const Appointment = require('../models/Appointment');
 const Barber = require('../models/Barber');
 const Client = require('../models/Client');
-const { authRequired } = require('../middleware/auth');
+const { authRequired, adminRequired } = require('../middleware/auth');
 const { parseTimeToMinutes } = require('../utils/time');
-const { getLegacyAttendancesByDateRange } = require('../utils/legacyAttendanceStore');
+const { getLegacyAttendancesByDateRange, getLegacyAttendanceRowsByClient } = require('../utils/legacyAttendanceStore');
 const { findServiceById } = require('../utils/serviceStore');
 const { findProductById } = require('../utils/productStore');
 
@@ -27,6 +27,57 @@ function toUpperTrimmed(value) {
 
 function isValidTimeString(value) {
     return /^\d{2}:\d{2}$/.test(String(value || ''));
+}
+
+function isValidObjectId(value) {
+    return /^[a-fA-F0-9]{24}$/.test(String(value || ''));
+}
+
+function formatAttendanceResponse(attendance, source = 'primary') {
+    const plainAttendance = attendance?.toObject ? attendance.toObject() : attendance;
+    return {
+        ...plainAttendance,
+        source
+    };
+}
+
+async function refreshClientLastAttendance(clientId) {
+    if (!isValidObjectId(clientId)) {
+        return;
+    }
+
+    const client = await Client.findById(clientId);
+    if (!client) {
+        return;
+    }
+
+    const latestAttendance = await Attendance.findOne({ clientId: client._id })
+        .populate('peluquero', 'nombre')
+        .sort({ fecha: -1, createdAt: -1 });
+
+    if (latestAttendance) {
+        client.ultimaAtencion = String(latestAttendance.fecha || '').trim();
+        client.ultimaAtencionPeluquero = String(latestAttendance.peluquero?.nombre || '').trim();
+        await client.save();
+        return;
+    }
+
+    const legacyRowsByClient = await getLegacyAttendanceRowsByClient([client]);
+    const legacyRow = legacyRowsByClient.get(String(client._id))?.[0] || null;
+
+    if (legacyRow) {
+        const legacyBarber = isValidObjectId(legacyRow.peluqueroId)
+            ? await Barber.findById(legacyRow.peluqueroId).select('nombre')
+            : null;
+
+        client.ultimaAtencion = String(legacyRow.fecha || '').trim();
+        client.ultimaAtencionPeluquero = String(legacyBarber?.nombre || '').trim();
+    } else {
+        client.ultimaAtencion = '';
+        client.ultimaAtencionPeluquero = '';
+    }
+
+    await client.save();
 }
 
 async function marcarTurnoAtendidoSiCorresponde({
@@ -114,9 +165,10 @@ router.get('/', authRequired, async (req, res) => {
 
     if (!atenciones.length) {
         atenciones = await getLegacyAttendancesByDateRange({ desde, hasta, peluqueroId });
+        return res.json(atenciones.map((attendance) => formatAttendanceResponse(attendance, 'legacy')));
     }
 
-    return res.json(atenciones);
+    return res.json(atenciones.map((attendance) => formatAttendanceResponse(attendance)));
 });
 
 router.post('/', authRequired, async (req, res) => {
@@ -162,7 +214,7 @@ router.post('/', authRequired, async (req, res) => {
     let productoNombre = '';
 
     if (tipoVentaNormalizado === 'servicio') {
-        if (!/^[a-fA-F0-9]{24}$/.test(String(servicioId))) {
+        if (!isValidObjectId(servicioId)) {
             return res.status(400).json({ error: 'Servicio invalido' });
         }
         servicio = await findServiceById(servicioId);
@@ -172,7 +224,7 @@ router.post('/', authRequired, async (req, res) => {
         monto = Number(servicio.precio);
         servicioNombre = servicio.nombre;
     } else {
-        if (!/^[a-fA-F0-9]{24}$/.test(String(productoId))) {
+        if (!isValidObjectId(productoId)) {
             return res.status(400).json({ error: 'Producto invalido' });
         }
         producto = await findProductById(productoId);
@@ -194,7 +246,7 @@ router.post('/', authRequired, async (req, res) => {
     }
 
     const clienteIdNormalizado = String(clienteId || '').trim();
-    if (clienteIdNormalizado && !/^[a-fA-F0-9]{24}$/.test(clienteIdNormalizado)) {
+    if (clienteIdNormalizado && !isValidObjectId(clienteIdNormalizado)) {
         return res.status(400).json({ error: 'Cliente invalido' });
     }
 
@@ -258,9 +310,34 @@ router.post('/', authRequired, async (req, res) => {
         .populate('productoId', 'nombre precio comisionMonto');
 
     return res.status(201).json({
-        ...populated.toObject(),
+        ...formatAttendanceResponse(populated),
         turnoMarcadoAtendido: Boolean(turnoAtendido),
         turnoActualizadoId: turnoAtendido?._id || null
+    });
+});
+
+router.delete('/:id', authRequired, adminRequired, async (req, res) => {
+    if (!isValidObjectId(req.params.id)) {
+        return res.status(400).json({ error: 'Venta invalida' });
+    }
+
+    const attendance = await Attendance.findById(req.params.id);
+    if (!attendance) {
+        return res.status(404).json({ error: 'Venta no encontrada' });
+    }
+
+    const clientId = String(attendance.clientId || '').trim();
+
+    await attendance.deleteOne();
+
+    if (clientId) {
+        await refreshClientLastAttendance(clientId);
+    }
+
+    return res.json({
+        ok: true,
+        deletedId: req.params.id,
+        clientId: clientId || null
     });
 });
 

@@ -36,13 +36,13 @@ router.post('/login', async (req, res) => {
     const user = await findUserByUsername(normalizeUsername(username));
 
     if (!user) {
-        return res.status(401).json({ error: 'Credenciales invalidas' });
+        return res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
     }
 
     const isValid = await bcrypt.compare(password, user.passwordHash);
 
     if (!isValid) {
-        return res.status(401).json({ error: 'Credenciales invalidas' });
+        return res.status(401).json({ error: 'Usuario o contrasena incorrectos' });
     }
 
     const token = signToken(user);

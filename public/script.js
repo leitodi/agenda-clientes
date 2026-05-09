@@ -127,6 +127,14 @@ function getAttendanceCommissionLabel(attendance) {
     return `$${monto} (${Number(attendance?.comisionPorcentaje || 0)}%)`;
 }
 
+function canDeleteAttendance(attendance) {
+    return (
+        isAdminRole()
+        && String(attendance?.source || 'primary').trim().toLowerCase() !== 'legacy'
+        && Boolean(String(attendance?._id || '').trim())
+    );
+}
+
 function normalizeDigits(value) {
     return String(value || '').replace(/\D/g, '').trim();
 }
@@ -1541,6 +1549,21 @@ async function selectCliente(clienteId) {
     renderClienteDetalle();
 }
 
+async function refreshSelectedClienteDetalle() {
+    if (!state.selectedClienteId) {
+        renderClienteDetalle();
+        return;
+    }
+
+    try {
+        await ensureClienteDetalle(state.selectedClienteId);
+    } catch (error) {
+        showMessage(error.message, 'error');
+    }
+
+    renderClienteDetalle();
+}
+
 function splitFullName(fullName) {
     const text = String(fullName || '').trim();
     if (!text) {
@@ -1813,8 +1836,10 @@ function renderCajaTable() {
         return;
     }
 
+    const columnCount = isAdminRole() ? 9 : 8;
+
     if (!state.atenciones.length) {
-        body.innerHTML = '<tr><td colspan="8">No hay ventas para la fecha seleccionada.</td></tr>';
+        body.innerHTML = `<tr><td colspan="${columnCount}">No hay ventas para la fecha seleccionada.</td></tr>`;
         return;
     }
 
@@ -1828,6 +1853,11 @@ function renderCajaTable() {
             <td>${escapeHtml(a.formaPago || '-')}</td>
             <td>$${Number(a.montoCobrado).toFixed(2)}</td>
             <td>${escapeHtml(getAttendanceCommissionLabel(a))}</td>
+            <td class="admin-only">
+                ${canDeleteAttendance(a)
+        ? `<button class="btn danger" type="button" data-action="delete-atencion" data-id="${escapeHtml(a._id)}">Eliminar</button>`
+        : ''}
+            </td>
         </tr>
     `).join('');
 }
@@ -3266,7 +3296,10 @@ function attachEvents() {
             await activateTab(isAgendaRole() ? 'turnos' : 'dashboard');
             showMessage('Sesion iniciada correctamente');
         } catch (error) {
-            showMessage(error.message, 'error');
+            const message = /usuario o contrasena incorrectos|credenciales invalidas/i.test(String(error.message || ''))
+                ? 'Usuario o contrasena incorrectos'
+                : error.message;
+            showMessage(message, 'error');
         }
     });
 
@@ -3853,6 +3886,40 @@ function attachEvents() {
     $('cajaFecha').addEventListener('change', async () => {
         try {
             await cargarAtenciones();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cajaTableBody').addEventListener('click', async (event) => {
+        const deleteBtn = event.target.closest('button[data-action="delete-atencion"]');
+        if (!deleteBtn) {
+            return;
+        }
+
+        if (!isAdminRole()) {
+            showMessage('Permisos insuficientes', 'error');
+            return;
+        }
+
+        const attendanceId = String(deleteBtn.dataset.id || '').trim();
+        if (!attendanceId) {
+            return;
+        }
+
+        if (!confirm('Vas a borrar esta venta de caja. Esta accion no se puede deshacer. ¿Continuar?')) {
+            return;
+        }
+
+        try {
+            await apiFetch(`/api/atenciones/${attendanceId}`, {
+                method: 'DELETE',
+                loadingText: 'Eliminando venta...'
+            });
+            await cargarAtenciones();
+            await cargarClientes();
+            await refreshSelectedClienteDetalle();
+            showMessage('Venta eliminada de caja');
         } catch (error) {
             showMessage(error.message, 'error');
         }
