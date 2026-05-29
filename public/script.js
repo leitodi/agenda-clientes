@@ -53,6 +53,7 @@ let turnosAhoraIntervalId = null;
 let accountAlertIntervalId = null;
 let loadingRequests = 0;
 let loadingTimerId = null;
+let clienteConfirmResolver = null;
 const turnosAlertados = new Set();
 
 const $ = (id) => document.getElementById(id);
@@ -1156,7 +1157,6 @@ async function fillClienteForm(clienteId) {
         }
     }
 
-    debugger;
     const parsed = splitFullName(cliente.nombre);
     $('clienteIdInput').value = cliente._id;
     $('clienteFormTitle').textContent = 'Editar cliente';
@@ -1671,6 +1671,69 @@ function openNuevoClienteTurnoModal(nombreCompleto) {
 function closeNuevoClienteTurnoModal() {
     $('nuevoClienteTurnoModal').classList.add('hidden');
     state.pendingTurnoClienteNombre = '';
+}
+
+function setClienteConfirmLock(locked) {
+    document.body.classList.toggle('modal-locked', locked);
+
+    Array.from(document.body.children).forEach((child) => {
+        if (child.id === 'clienteConfirmModal') {
+            return;
+        }
+
+        if (!('inert' in child)) {
+            return;
+        }
+
+        if (locked) {
+            child.dataset.clienteConfirmPrevInert = child.inert ? 'true' : 'false';
+            child.inert = true;
+            return;
+        }
+
+        if (child.dataset.clienteConfirmPrevInert === 'false') {
+            child.inert = false;
+        }
+
+        delete child.dataset.clienteConfirmPrevInert;
+    });
+}
+
+function openClienteConfirmModal(message) {
+    const modal = $('clienteConfirmModal');
+    const text = $('clienteConfirmText');
+    const okButton = $('clienteConfirmOk');
+
+    if (!modal || !text || !okButton) {
+        return Promise.resolve();
+    }
+
+    text.textContent = message;
+    setClienteConfirmLock(true);
+    modal.classList.remove('hidden');
+    window.setTimeout(() => {
+        okButton.focus();
+    }, 0);
+
+    return new Promise((resolve) => {
+        clienteConfirmResolver = resolve;
+    });
+}
+
+function closeClienteConfirmModal() {
+    const modal = $('clienteConfirmModal');
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.add('hidden');
+    setClienteConfirmLock(false);
+
+    const resolve = clienteConfirmResolver;
+    clienteConfirmResolver = null;
+    if (typeof resolve === 'function') {
+        resolve();
+    }
 }
 
 function setCumpleHistorialModalContent({ title, summary, html }) {
@@ -3451,11 +3514,11 @@ function attachEvents() {
                 }
             });
 
-            await cargarClientes();
-
             $('turnoCliente').value = saved.nombre;
             state.selectedTurnoClienteId = saved._id;
-            updateTurnoClienteInfo(saved);
+            await openClienteConfirmModal('Cliente creado correctamente. Presiona OK para actualizar la lista y continuar.');
+            await cargarClientes();
+            updateTurnoClienteInfo(state.clientes.find((item) => item._id === saved._id) || saved);
             closeNuevoClienteTurnoModal();
 
             if (state.pendingTurnoPayload) {
@@ -3569,6 +3632,10 @@ function attachEvents() {
         openFotosModal(cliente.foto2, cliente.foto1);
     });
 
+    $('clienteConfirmOk').addEventListener('click', () => {
+        closeClienteConfirmModal();
+    });
+
     $('clienteForm').addEventListener('submit', async (event) => {
         event.preventDefault();
 
@@ -3595,28 +3662,32 @@ function attachEvents() {
                 foto2
             };
 
-            debugger;
             let saved = null;
             if (clienteId) {
-
                 saved = await apiFetch(`/api/clientes/${clienteId}`, {
                     method: 'PUT',
                     body
                 });
-            } else {
-
-                saved = await apiFetch('/api/clientes', {
-                    method: 'POST',
-                    body
-                });
+                resetClienteForm();
+                if (saved?._id) {
+                    state.selectedClienteId = saved._id;
+                }
+                await cargarClientes();
+                showMessage('Cliente actualizado correctamente');
+                return;
             }
 
+            saved = await apiFetch('/api/clientes', {
+                method: 'POST',
+                body
+            });
+
+            await openClienteConfirmModal('Cliente guardado correctamente. Presiona OK para actualizar la lista de clientes.');
             resetClienteForm();
             if (saved?._id) {
                 state.selectedClienteId = saved._id;
             }
             await cargarClientes();
-            showMessage(clienteId ? 'Cliente actualizado correctamente' : 'Cliente guardado correctamente');
         } catch (error) {
             showMessage(error.message, 'error');
         }
