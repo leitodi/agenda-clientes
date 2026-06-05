@@ -1999,9 +1999,12 @@ function renderReportes(atenciones = []) {
 
 function buildSeguimientoMessage(clienteNombre, diasDesdeUltimoCorte) {
     const nombre = String(clienteNombre || '').trim().split(/\s+/).filter(Boolean)[0] || '';
-    const dias = Number(diasDesdeUltimoCorte || 0);
 
-    return `Hola ${nombre}! Te escribimos desde Salon Milano. Ya pasaron ${dias} dias desde tu ultimo corte. Si quieres, te ayudamos a reservar tu proximo turno.`;
+    return `Hola ${nombre} 👋
+
+En Salón Milano tenemos un descuento especial para tu próximo corte.
+
+Si querés aprovecharlo, respondé este mensaje y te ayudamos a reservar el turno.`;
 }
 
 function parseIsoDateOnlyLocal(dateString) {
@@ -4255,4 +4258,3 @@ async function init() {
 }
 
 init();
-
