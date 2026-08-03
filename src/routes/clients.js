@@ -1,9 +1,10 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const XLSX = require('xlsx');
 const Client = require('../models/Client');
 const Appointment = require('../models/Appointment');
 const Attendance = require('../models/Attendance');
-const { authRequired } = require('../middleware/auth');
+const { authRequired, adminRequired } = require('../middleware/auth');
 const { getLegacyAttendanceRowsByClient } = require('../utils/legacyAttendanceStore');
 
 const router = express.Router();
@@ -284,6 +285,41 @@ router.get('/', authRequired, async (req, res) => {
     });
 
     return res.json(response);
+});
+
+router.get('/excel', authRequired, adminRequired, async (req, res) => {
+    const clientes = await Client.find()
+        .select('nombre telefono fechaCumpleanos')
+        .sort({ nombre: 1, _id: 1 });
+
+    const rows = [
+        ['Agenda de Clientes'],
+        [],
+        ['Nombre y Apellido', 'Fecha de cumpleaños', 'Teléfono']
+    ];
+
+    clientes.forEach((cliente) => {
+        rows.push([
+            String(cliente.nombre || '').trim(),
+            String(cliente.fechaCumpleanos || '').trim(),
+            String(cliente.telefono || '').trim()
+        ]);
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet['!cols'] = [
+        { wch: 28 },
+        { wch: 18 },
+        { wch: 16 }
+    ];
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Clientes');
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="agenda_clientes.xlsx"');
+    return res.send(buffer);
 });
 
 router.post('/', authRequired, async (req, res) => {

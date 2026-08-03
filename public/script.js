@@ -3595,6 +3595,15 @@ function attachEvents() {
         renderClientesList();
     });
 
+    $('descargarAgendaClientesBtn').addEventListener('click', async () => {
+        try {
+            await downloadFile('/api/clientes/excel', 'agenda_clientes.xlsx');
+            showMessage('Agenda de clientes descargada');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
     $('clientesList').addEventListener('click', async (event) => {
         const item = event.target.closest('[data-action=\"select-cliente\"]');
         if (!item) {
