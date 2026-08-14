@@ -27,11 +27,12 @@ const Attendance = require('./src/models/Attendance');
 const { ensureSeedData } = require('./src/utils/seed');
 const { SERVICE_TYPES } = require('./src/utils/services');
 const { normalizeServiceWorkType } = require('./src/utils/serviceWorkTypes');
+const { getConfiguredMongoUri, getActiveDbName, LEGACY_DB_NAME } = require('./src/utils/dbConfig');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/agenda_clientes';
-const ACTIVE_DB_NAME = process.env.MONGODB_DB_NAME || 'agenda_clientes';
+const MONGODB_URI = getConfiguredMongoUri();
+const ACTIVE_DB_NAME = getActiveDbName();
 const STATIC_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, proxy-revalidate';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const APP_MODE = String(process.env.APP_MODE || 'internal').trim().toLowerCase();
@@ -347,6 +348,14 @@ async function ensureAttendanceClientLinks() {
 
 async function startServer() {
     try {
+        if (String(process.env.MONGODB_DB_NAME || '').trim() === LEGACY_DB_NAME) {
+            console.warn(`MONGODB_DB_NAME apuntaba a ${LEGACY_DB_NAME}; se usara ${ACTIVE_DB_NAME}.`);
+        }
+
+        if (String(process.env.MONGODB_URI || '').includes(`/${LEGACY_DB_NAME}`)) {
+            console.warn(`MONGODB_URI apuntaba a ${LEGACY_DB_NAME}; se usara ${ACTIVE_DB_NAME}.`);
+        }
+
         await mongoose.connect(MONGODB_URI, {
             dbName: ACTIVE_DB_NAME
         });

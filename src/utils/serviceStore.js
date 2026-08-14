@@ -1,8 +1,7 @@
 const mongoose = require('mongoose');
 const Service = require('../models/Service');
 const { normalizeServiceWorkType } = require('./serviceWorkTypes');
-
-const LEGACY_DB_NAME = 'agenda_clientes';
+const { getActiveDbConnection } = require('./dbConfig');
 
 function normalizeName(value) {
     return String(value || '').trim().toLowerCase();
@@ -24,11 +23,11 @@ function toServicePayload(service, source = 'primary') {
 }
 
 async function getLegacyServiceModel() {
-    if (mongoose.connection.readyState !== 1) {
+    const connection = getActiveDbConnection();
+    if (!connection) {
         return null;
     }
 
-    const connection = mongoose.connection.useDb(LEGACY_DB_NAME, { useCache: true });
     return connection.models.Service || connection.model('Service', Service.serviceSchema, 'services');
 }
 

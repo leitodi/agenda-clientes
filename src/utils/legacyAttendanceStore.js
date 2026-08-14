@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { getActiveDbConnection } = require('./dbConfig');
 
 function normalizeName(value) {
     return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -44,11 +45,7 @@ function normalizeOptionalBirthday(value) {
 }
 
 async function getLegacyConnection() {
-    if (mongoose.connection.readyState !== 1) {
-        return null;
-    }
-
-    return mongoose.connection.useDb('agenda_clientes', { useCache: true });
+    return getActiveDbConnection();
 }
 
 async function getLegacyBirthdayData() {

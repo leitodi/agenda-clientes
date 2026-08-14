@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
-
-const LEGACY_DB_NAME = 'agenda_clientes';
+const { getActiveDbConnection } = require('./dbConfig');
 
 function normalizeUsername(value) {
     return String(value || '').toLowerCase().trim();
@@ -20,11 +19,11 @@ function getUserPayload(user, source = 'primary') {
 }
 
 async function getLegacyUserModel() {
-    if (mongoose.connection.readyState !== 1) {
+    const connection = getActiveDbConnection();
+    if (!connection) {
         return null;
     }
 
-    const connection = mongoose.connection.useDb(LEGACY_DB_NAME, { useCache: true });
     return connection.models.User || connection.model('User', User.userSchema, 'users');
 }
 
