@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: rincon-natural
+    env: node
+    plan: free
+    buildCommand: cd backend && npm install --include=dev && npm run build && cd .. && cd frontend && npm install --include=dev && npm run build
+    startCommand: cd backend && npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: rincon_natural
+      - key: JWT_SECRET
+        sync: false
+      - key: NODE_ENV
+        value: production

@@ -1,0 +1,253 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-verde: #2d5016;
+  --color-verde-deep: #1f3810;
+  --color-verde-soft: #4e6d36;
+  --color-madera: #8b6914;
+  --color-madera-soft: #b8914c;
+  --color-crema: #f8f5ef;
+  --color-crema-soft: #f3eddf;
+  --color-blanco: #ffffff;
+  --color-page: #f4efe4;
+  --color-panel: rgba(255, 255, 255, 0.94);
+  --color-panel-soft: #f6f0e3;
+  --color-panel-muted: #efe8d8;
+  --color-border: rgba(45, 80, 22, 0.16);
+  --color-border-strong: rgba(139, 105, 20, 0.24);
+  --color-text: #203317;
+  --color-text-muted: #5c684c;
+  --color-text-soft: #7b7a68;
+  --shadow-panel: 0 24px 60px rgba(45, 80, 22, 0.12);
+}
+
+html {
+  background: var(--color-page);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(45, 80, 22, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(139, 105, 20, 0.12), transparent 22%),
+    linear-gradient(180deg, #fbf8f1 0%, #f4efe4 48%, #efe6d3 100%);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@layer components {
+  .app-page-shell {
+    @apply min-h-screen;
+    color: var(--color-text);
+  }
+
+  .app-panel {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 245, 239, 0.98));
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-panel);
+    @apply rounded-[30px];
+  }
+
+  .app-panel-muted {
+    background: linear-gradient(180deg, rgba(248, 245, 239, 0.98), rgba(239, 232, 216, 0.98));
+    border: 1px solid rgba(45, 80, 22, 0.12);
+    @apply rounded-[24px];
+  }
+
+  .app-kicker {
+    color: var(--color-madera);
+    @apply text-xs uppercase tracking-[0.35em];
+  }
+
+  .app-title {
+    font-family: Georgia, 'Times New Roman', serif;
+    color: var(--color-verde-deep);
+    @apply mt-2 text-4xl font-semibold;
+  }
+
+  .app-subtitle {
+    color: var(--color-text-muted);
+    @apply mt-3 text-sm leading-6;
+  }
+
+  .app-label {
+    color: var(--color-text);
+    @apply mb-2 block text-sm font-medium;
+  }
+
+  .app-field {
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid rgba(45, 80, 22, 0.14);
+    color: var(--color-verde-deep);
+    @apply w-full rounded-[20px] px-4 py-3 outline-none transition;
+  }
+
+  .app-field::placeholder {
+    color: var(--color-text-soft);
+  }
+
+  .app-field:focus {
+    border-color: rgba(45, 80, 22, 0.42);
+    box-shadow: 0 0 0 4px rgba(45, 80, 22, 0.1);
+  }
+
+  .app-button-primary {
+    background: linear-gradient(180deg, #3b6021 0%, #284714 100%);
+    color: #ffffff;
+    @apply rounded-[20px] px-5 py-3 text-sm font-semibold transition;
+  }
+
+  .app-button-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 30px rgba(45, 80, 22, 0.18);
+  }
+
+  .app-button-secondary {
+    background: linear-gradient(180deg, rgba(248, 245, 239, 0.98), rgba(239, 232, 216, 0.98));
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-verde-deep);
+    @apply rounded-[20px] px-5 py-3 text-sm font-semibold transition;
+  }
+
+  .app-button-secondary:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(245, 237, 220, 1));
+  }
+
+  .app-button-danger {
+    background: linear-gradient(180deg, #8b6914 0%, #6f5310 100%);
+    border: 1px solid rgba(139, 105, 20, 0.28);
+    color: #fffdf8;
+    @apply rounded-[18px] px-4 py-2 text-xs font-semibold transition;
+  }
+
+  .app-button-danger:hover {
+    background: linear-gradient(180deg, #9a7720 0%, #7b5d15 100%);
+  }
+
+  .app-chip {
+    background: rgba(45, 80, 22, 0.08);
+    color: var(--color-verde-deep);
+    border: 1px solid rgba(45, 80, 22, 0.14);
+    @apply rounded-full px-3 py-1 text-xs font-medium;
+  }
+
+  .app-badge-ok {
+    background: rgba(45, 80, 22, 0.14);
+    color: var(--color-verde-deep);
+    border: 1px solid rgba(45, 80, 22, 0.18);
+    @apply inline-flex min-w-[112px] items-center justify-center rounded-full px-3 py-1 text-center text-xs font-semibold leading-none whitespace-nowrap;
+  }
+
+  .app-badge-alert {
+    background: rgba(139, 105, 20, 0.14);
+    color: #6f5310;
+    border: 1px solid rgba(139, 105, 20, 0.24);
+    @apply inline-flex min-w-[112px] items-center justify-center rounded-full px-3 py-1 text-center text-xs font-semibold leading-none whitespace-nowrap;
+  }
+
+  .app-table-shell {
+    @apply overflow-hidden rounded-[30px];
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-panel);
+  }
+
+  .app-table-shell table {
+    @apply min-w-full text-left;
+  }
+
+  .app-table-shell thead {
+    background: linear-gradient(180deg, rgba(45, 80, 22, 0.96), rgba(31, 56, 16, 0.96));
+    color: #ffffff;
+  }
+
+  .app-table-shell thead th {
+    @apply px-6 py-4 text-sm font-semibold uppercase tracking-[0.2em];
+  }
+
+  .app-table-shell tbody tr {
+    background: rgba(255, 255, 255, 0.98);
+    color: var(--color-text);
+  }
+
+  .app-table-shell tbody tr + tr td {
+    border-top: 1px solid rgba(45, 80, 22, 0.08);
+  }
+
+  .app-table-shell tbody td {
+    @apply px-6 py-4 text-sm align-top;
+  }
+
+  .brand-wood {
+    background-image:
+      linear-gradient(135deg, rgba(31, 56, 16, 0.9), rgba(139, 105, 20, 0.62)),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(13, 11, 8, 0.12)),
+      url('/branding/wood-logo-reference.jpeg');
+    background-position: center;
+    background-size: cover;
+  }
+
+  .app-note {
+    color: var(--color-text-muted);
+  }
+
+  .app-soft-note {
+    color: var(--color-text-soft);
+  }
+
+  .app-empty-state {
+    color: var(--color-text-muted);
+    @apply text-center;
+  }
+
+  .app-toggle-pill {
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(45, 80, 22, 0.12);
+    color: var(--color-text-muted);
+    @apply rounded-2xl px-4 py-3 text-sm font-semibold transition;
+  }
+
+  .app-toggle-pill-active {
+    background: linear-gradient(180deg, #8b6914 0%, #6f5310 100%);
+    border: 1px solid rgba(139, 105, 20, 0.24);
+    color: #ffffff;
+  }
+
+  .fade-up {
+    animation: fade-up 520ms ease;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
