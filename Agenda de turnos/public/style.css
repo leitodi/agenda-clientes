@@ -319,49 +319,6 @@ fieldset {
     min-width: 0;
 }
 
-.cliente-combo {
-    position: relative;
-}
-
-.cliente-combo-resultados {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    margin-top: 6px;
-    max-height: 240px;
-    overflow-y: auto;
-    background: linear-gradient(180deg, rgba(26, 27, 31, 0.98), rgba(18, 19, 23, 0.98));
-    border: 1px solid rgba(212, 175, 55, 0.3);
-    border-radius: 14px;
-    z-index: 50;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
-}
-
-.cliente-combo-resultados.hidden {
-    display: none;
-}
-
-.cliente-combo-item {
-    padding: 11px 14px;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 0.94rem;
-    color: var(--text);
-}
-
-.cliente-combo-item:hover,
-.cliente-combo-item.active {
-    background: rgba(212, 175, 55, 0.16);
-}
-
-.cliente-combo-empty {
-    padding: 11px 14px;
-    color: var(--text-muted);
-    font-size: 0.88rem;
-    font-weight: 500;
-}
-
 .btn {
     appearance: none;
     border: 1px solid rgba(212, 175, 55, 0.22);

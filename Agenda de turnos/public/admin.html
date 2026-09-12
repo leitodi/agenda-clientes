@@ -459,11 +459,10 @@
                         Peluquero
                         <select id="cajaPeluquero" required></select>
                     </label>
-                    <label class="cliente-combo">
+                    <label>
                         Cliente
-                        <input id="cajaClienteInput" type="text" autocomplete="off" placeholder="Buscar cliente...">
-                        <input id="cajaCliente" type="hidden">
-                        <div id="cajaClienteResultados" class="cliente-combo-resultados hidden"></div>
+                        <input id="cajaCliente" type="text" list="cajaClientesDatalist" placeholder="Selecciona o escribe un cliente" required>
+                        <datalist id="cajaClientesDatalist"></datalist>
                     </label>
                     <label>
                         Forma de pago

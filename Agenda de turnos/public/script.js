@@ -1026,6 +1026,13 @@ function completarClientesDatalist() {
     if (datalistClientes) {
         datalistClientes.innerHTML = options;
     }
+
+    const datalistCaja = $('cajaClientesDatalist');
+    if (datalistCaja) {
+        datalistCaja.innerHTML = getCajaClientesOrdenados()
+            .map((cliente) => `<option value="${escapeHtml(cliente.nombre)}"></option>`)
+            .join('');
+    }
 }
 
 function getCajaClientesOrdenados() {
@@ -1045,40 +1052,12 @@ function getCajaClientesOrdenados() {
     });
 }
 
-function renderCajaClienteResultados(query) {
-    const container = $('cajaClienteResultados');
-    if (!container) {
-        return;
+function findCajaClienteByNombre(nombre) {
+    const normalized = normalizeText(nombre || '');
+    if (!normalized) {
+        return null;
     }
-
-    const normalizedQuery = normalizeText(query || '');
-    const clientesOrdenados = getCajaClientesOrdenados();
-    const filtrados = normalizedQuery
-        ? clientesOrdenados.filter((cliente) => normalizeText(cliente.nombre).includes(normalizedQuery))
-        : clientesOrdenados;
-
-    if (!filtrados.length) {
-        container.innerHTML = '<div class="cliente-combo-empty">Sin resultados</div>';
-    } else {
-        container.innerHTML = filtrados
-            .slice(0, 50)
-            .map((cliente) => `<div class="cliente-combo-item" data-id="${cliente._id}">${escapeHtml(cliente.nombre)}</div>`)
-            .join('');
-    }
-
-    container.classList.remove('hidden');
-}
-
-function selectCajaCliente(clienteId, nombre) {
-    $('cajaCliente').value = clienteId;
-    $('cajaClienteInput').value = nombre;
-    $('cajaClienteResultados').classList.add('hidden');
-}
-
-function resetCajaClienteCombo() {
-    $('cajaCliente').value = '';
-    $('cajaClienteInput').value = '';
-    $('cajaClienteResultados').classList.add('hidden');
+    return state.clientes.find((cliente) => normalizeText(cliente.nombre) === normalized) || null;
 }
 
 function renderClientesList() {
@@ -3839,38 +3818,6 @@ function attachEvents() {
         }
     });
 
-    const cajaClienteInput = $('cajaClienteInput');
-    const cajaClienteResultados = $('cajaClienteResultados');
-
-    if (cajaClienteInput && cajaClienteResultados) {
-        cajaClienteInput.addEventListener('input', () => {
-            $('cajaCliente').value = '';
-            renderCajaClienteResultados(cajaClienteInput.value);
-        });
-
-        cajaClienteInput.addEventListener('focus', () => {
-            renderCajaClienteResultados(cajaClienteInput.value);
-        });
-
-        cajaClienteInput.addEventListener('blur', () => {
-            window.setTimeout(() => {
-                cajaClienteResultados.classList.add('hidden');
-            }, 150);
-        });
-
-        cajaClienteResultados.addEventListener('click', (event) => {
-            const item = event.target.closest('.cliente-combo-item');
-            if (!item) {
-                return;
-            }
-
-            const cliente = state.clientes.find((c) => c._id === item.dataset.id);
-            if (cliente) {
-                selectCajaCliente(cliente._id, cliente.nombre);
-            }
-        });
-    }
-
     $('cajaForm').addEventListener('submit', async (event) => {
         event.preventDefault();
 
@@ -3887,19 +3834,19 @@ function attachEvents() {
                 throw new Error('Debes seleccionar un producto');
             }
 
-            const clienteId = $('cajaCliente').value;
-            if (!clienteId) {
-                throw new Error('Debes seleccionar un cliente');
+            const clienteTexto = $('cajaCliente').value.trim();
+            const clienteSeleccionado = findCajaClienteByNombre(clienteTexto);
+            if (!clienteSeleccionado) {
+                throw new Error('Debes seleccionar un cliente de la lista');
             }
-            const clienteSeleccionado = state.clientes.find((cliente) => cliente._id === clienteId);
             const atencion = await apiFetch('/api/atenciones', {
                 method: 'POST',
                 body: {
                     fecha: $('cajaFecha').value,
                     horaReferencia: getCurrentClockLocal(),
                     peluqueroId: $('cajaPeluquero').value,
-                    cliente: clienteSeleccionado?.nombre || '',
-                    clienteId,
+                    cliente: clienteSeleccionado.nombre,
+                    clienteId: clienteSeleccionado._id,
                     formaPago: $('cajaFormaPago').value,
                     tipoVenta,
                     servicioId: tipoVenta === 'servicio' ? servicioId : null,
@@ -3908,7 +3855,7 @@ function attachEvents() {
             });
 
             setCajaFechaDefault();
-            resetCajaClienteCombo();
+            $('cajaCliente').value = '';
             $('cajaFormaPago').value = 'efectivo';
             $('cajaTipoVenta').value = 'servicio';
             renderCajaServiciosSelect();
