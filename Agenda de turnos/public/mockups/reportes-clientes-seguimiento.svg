@@ -1,0 +1,96 @@
+<svg width="1440" height="1024" viewBox="0 0 1440 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1440" height="1024" fill="#F4EFE6"/>
+  <rect x="32" y="28" width="1376" height="968" rx="28" fill="#FFF9F0" stroke="#D9CBB8" stroke-width="2"/>
+  <rect x="32" y="28" width="260" height="968" rx="28" fill="#1F2937"/>
+  <text x="72" y="92" fill="#F8E7C9" font-family="Arial, sans-serif" font-size="34" font-weight="700">Salon Milano</text>
+  <text x="72" y="128" fill="#C9B48F" font-family="Arial, sans-serif" font-size="16">Panel de gestion</text>
+
+  <rect x="56" y="180" width="212" height="52" rx="14" fill="#2B3648"/>
+  <text x="84" y="213" fill="#D9E2F2" font-family="Arial, sans-serif" font-size="19" font-weight="600">Dashboard</text>
+  <rect x="56" y="244" width="212" height="52" rx="14" fill="#2B3648"/>
+  <text x="84" y="277" fill="#D9E2F2" font-family="Arial, sans-serif" font-size="19" font-weight="600">Turnos</text>
+  <rect x="56" y="308" width="212" height="52" rx="14" fill="#2B3648"/>
+  <text x="84" y="341" fill="#D9E2F2" font-family="Arial, sans-serif" font-size="19" font-weight="600">Clientes</text>
+  <rect x="56" y="372" width="212" height="52" rx="14" fill="#A86E2D"/>
+  <text x="84" y="405" fill="#FFF7E8" font-family="Arial, sans-serif" font-size="19" font-weight="700">Reportes</text>
+  <rect x="56" y="436" width="212" height="52" rx="14" fill="#2B3648"/>
+  <text x="84" y="469" fill="#D9E2F2" font-family="Arial, sans-serif" font-size="19" font-weight="600">Caja</text>
+
+  <text x="332" y="92" fill="#1F2937" font-family="Arial, sans-serif" font-size="36" font-weight="700">Modulo de reportes</text>
+  <text x="332" y="126" fill="#6B7280" font-family="Arial, sans-serif" font-size="18">Ejemplo de consulta: clientes por ultimo corte</text>
+
+  <rect x="332" y="164" width="1048" height="92" rx="22" fill="#FFFFFF" stroke="#E7D8C5" stroke-width="2"/>
+  <text x="364" y="199" fill="#5B6472" font-family="Arial, sans-serif" font-size="16" font-weight="600">Consulta</text>
+  <rect x="364" y="212" width="298" height="28" rx="14" fill="#F4EFE6"/>
+  <text x="382" y="231" fill="#1F2937" font-family="Arial, sans-serif" font-size="14">Clientes por seguimiento</text>
+  <text x="714" y="199" fill="#5B6472" font-family="Arial, sans-serif" font-size="16" font-weight="600">Accion</text>
+  <rect x="714" y="212" width="204" height="32" rx="16" fill="#B77932"/>
+  <text x="748" y="233" fill="#FFF9F0" font-family="Arial, sans-serif" font-size="14" font-weight="700">Traer listado</text>
+  <text x="982" y="199" fill="#5B6472" font-family="Arial, sans-serif" font-size="16" font-weight="600">Filtros futuros</text>
+  <text x="982" y="232" fill="#7A7F87" font-family="Arial, sans-serif" font-size="14">Por peluquero, servicio o rango</text>
+
+  <rect x="332" y="284" width="324" height="140" rx="24" fill="#E6F7EB" stroke="#8FD2A3" stroke-width="2"/>
+  <circle cx="380" cy="338" r="22" fill="#29A45C"/>
+  <text x="370" y="346" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="20" font-weight="700">7</text>
+  <text x="418" y="328" fill="#13663C" font-family="Arial, sans-serif" font-size="22" font-weight="700">VERDE</text>
+  <text x="418" y="356" fill="#2A6A45" font-family="Arial, sans-serif" font-size="16">Se corto en la ultima semana</text>
+  <text x="418" y="389" fill="#13663C" font-family="Arial, sans-serif" font-size="30" font-weight="700">24 clientes</text>
+
+  <rect x="694" y="284" width="324" height="140" rx="24" fill="#FFF5D7" stroke="#E6C457" stroke-width="2"/>
+  <circle cx="742" cy="338" r="22" fill="#E0B22E"/>
+  <text x="725" y="346" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="20" font-weight="700">15</text>
+  <text x="780" y="328" fill="#8C6700" font-family="Arial, sans-serif" font-size="22" font-weight="700">AMARILLO</text>
+  <text x="780" y="356" fill="#8C6E12" font-family="Arial, sans-serif" font-size="16">Hace entre 8 y 29 dias</text>
+  <text x="780" y="389" fill="#8C6700" font-family="Arial, sans-serif" font-size="30" font-weight="700">41 clientes</text>
+
+  <rect x="1056" y="284" width="324" height="140" rx="24" fill="#FCE6E6" stroke="#E19C9C" stroke-width="2"/>
+  <circle cx="1104" cy="338" r="22" fill="#C94B4B"/>
+  <text x="1092" y="346" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="20" font-weight="700">30</text>
+  <text x="1142" y="328" fill="#8F1F1F" font-family="Arial, sans-serif" font-size="22" font-weight="700">ROJO</text>
+  <text x="1142" y="356" fill="#964646" font-family="Arial, sans-serif" font-size="16">Hace 1 mes o mas</text>
+  <text x="1142" y="389" fill="#8F1F1F" font-family="Arial, sans-serif" font-size="30" font-weight="700">18 clientes</text>
+
+  <rect x="332" y="452" width="1048" height="492" rx="24" fill="#FFFFFF" stroke="#E7D8C5" stroke-width="2"/>
+  <text x="364" y="492" fill="#1F2937" font-family="Arial, sans-serif" font-size="24" font-weight="700">Listado de clientes</text>
+  <text x="1135" y="492" fill="#6B7280" font-family="Arial, sans-serif" font-size="15">Nombre, ultimo corte y WhatsApp</text>
+
+  <rect x="364" y="522" width="984" height="46" rx="14" fill="#FAF6EF"/>
+  <text x="392" y="551" fill="#7B8088" font-family="Arial, sans-serif" font-size="15" font-weight="700">CLIENTE</text>
+  <text x="764" y="551" fill="#7B8088" font-family="Arial, sans-serif" font-size="15" font-weight="700">ULTIMO CORTE</text>
+  <text x="1022" y="551" fill="#7B8088" font-family="Arial, sans-serif" font-size="15" font-weight="700">ESTADO</text>
+  <text x="1190" y="551" fill="#7B8088" font-family="Arial, sans-serif" font-size="15" font-weight="700">WHATSAPP</text>
+
+  <rect x="364" y="586" width="984" height="68" rx="16" fill="#F7FCF8"/>
+  <text x="392" y="626" fill="#1F2937" font-family="Arial, sans-serif" font-size="20" font-weight="700">JUAN PEREZ</text>
+  <text x="764" y="626" fill="#374151" font-family="Arial, sans-serif" font-size="18">2026-03-28</text>
+  <rect x="1016" y="603" width="122" height="32" rx="16" fill="#2FA860"/>
+  <text x="1048" y="624" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="14" font-weight="700">VERDE</text>
+  <rect x="1168" y="598" width="148" height="40" rx="20" fill="#25D366"/>
+  <text x="1193" y="623" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="15" font-weight="700">Enviar mensaje</text>
+
+  <rect x="364" y="666" width="984" height="68" rx="16" fill="#FFFDF4"/>
+  <text x="392" y="706" fill="#1F2937" font-family="Arial, sans-serif" font-size="20" font-weight="700">MARIO LOPEZ</text>
+  <text x="764" y="706" fill="#374151" font-family="Arial, sans-serif" font-size="18">2026-03-15</text>
+  <rect x="1000" y="683" width="152" height="32" rx="16" fill="#E2B52D"/>
+  <text x="1027" y="704" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="14" font-weight="700">AMARILLO</text>
+  <rect x="1168" y="678" width="148" height="40" rx="20" fill="#25D366"/>
+  <text x="1193" y="703" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="15" font-weight="700">Enviar mensaje</text>
+
+  <rect x="364" y="746" width="984" height="68" rx="16" fill="#FFF7F7"/>
+  <text x="392" y="786" fill="#1F2937" font-family="Arial, sans-serif" font-size="20" font-weight="700">CARLOS GOMEZ</text>
+  <text x="764" y="786" fill="#374151" font-family="Arial, sans-serif" font-size="18">2026-02-12</text>
+  <rect x="1023" y="763" width="108" height="32" rx="16" fill="#CA4D4D"/>
+  <text x="1053" y="784" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="14" font-weight="700">ROJO</text>
+  <rect x="1168" y="758" width="148" height="40" rx="20" fill="#25D366"/>
+  <text x="1193" y="783" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="15" font-weight="700">Enviar mensaje</text>
+
+  <rect x="364" y="826" width="984" height="68" rx="16" fill="#F7FCF8"/>
+  <text x="392" y="866" fill="#1F2937" font-family="Arial, sans-serif" font-size="20" font-weight="700">NICO AGUIRRE</text>
+  <text x="764" y="866" fill="#374151" font-family="Arial, sans-serif" font-size="18">2026-03-31</text>
+  <rect x="1016" y="843" width="122" height="32" rx="16" fill="#2FA860"/>
+  <text x="1048" y="864" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="14" font-weight="700">VERDE</text>
+  <rect x="1168" y="838" width="148" height="40" rx="20" fill="#25D366"/>
+  <text x="1193" y="863" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="15" font-weight="700">Enviar mensaje</text>
+
+  <text x="364" y="925" fill="#7A7F87" font-family="Arial, sans-serif" font-size="15">Idea: esta consulta puede convivir con otras futuras como clientes sin volver, clientes frecuentes o cumpleanos del mes.</text>
+</svg>

@@ -1,333 +1,4037 @@
-// Variables globales
-let clientes = [];
-let clienteSeleccionado = null;
+const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'MiÃ©rcoles', 'Jueves', 'Viernes', 'SÃ¡bado'];
 
-// API URL
-const API_URL = '/api';
+const MAX_IMAGE_DIMENSION = 1280;
+const TARGET_IMAGE_BYTES = 950 * 1024;
+const MIN_IMAGE_DIMENSION = 640;
+const MIN_JPEG_QUALITY = 0.5;
+const MAX_FALLBACK_FILE_BYTES = 6 * 1024 * 1024;
+const OPENING_MINUTES = 10 * 60;
+const CLOSING_MINUTES = 22 * 60;
+const DEFAULT_SERVICE_WORK_TYPE = 'peluqueria';
+const SERVICE_WORK_TYPES = [
+    { value: 'peluqueria', label: 'Peluqueria' },
+    { value: 'barberia', label: 'Barberia' },
+    { value: 'manicura', label: 'Manicura' },
+    { value: 'depilacion', label: 'Depilaci\u00f3n' }
+];
+const SERVICE_WORK_TYPE_LABELS = Object.fromEntries(
+    SERVICE_WORK_TYPES.map((item) => [item.value, item.label])
+);
 
-// Inicializar
-document.addEventListener('DOMContentLoaded', function() {
-    configurarFormulario();
-    configurarModal();
-    cargarClientes();
-});
+const state = {
+    token: localStorage.getItem('agendaToken') || null,
+    user: JSON.parse(localStorage.getItem('agendaUser') || 'null'),
+    servicios: {
+        corte: { label: 'Corte', durationMinutes: 30 },
+        corte_barba: { label: 'Corte + barba', durationMinutes: 45 }
+    },
+    peluqueros: [],
+    cumplePeluqueros: [],
+    turnos: [],
+    turnosDelMomento: [],
+    clientes: [],
+    cumpleClientes: [],
+    serviciosCaja: [],
+    productos: [],
+    selectedClienteId: null,
+    selectedTurnoClienteId: null,
+    selectedCumpleDate: null,
+    currentCumpleMonth: null,
+    selectedCumpleHistorialClienteId: null,
+    cumpleHistorialRequestId: 0,
+    pendingTurnoPayload: null,
+    pendingTurnoClienteNombre: '',
+    atenciones: [],
+    consultasSeguimiento: null,
+    consultasSeguimientoFiltro: 'todos',
+    usuarios: [],
+    loadedTabs: {}
+};
 
-// Configurar el formulario
-function configurarFormulario() {
-    const form = document.getElementById('clienteForm');
-    const foto1Input = document.getElementById('foto1');
-    const foto2Input = document.getElementById('foto2');
+let turnosAhoraIntervalId = null;
+let accountAlertIntervalId = null;
+let loadingRequests = 0;
+let loadingTimerId = null;
+let clienteConfirmResolver = null;
+const turnosAlertados = new Set();
 
-    // Previsualizaciones de fotos
-    foto1Input.addEventListener('change', function(e) {
-        mostrarPreview(e.target, 'preview-foto1');
-    });
+const $ = (id) => document.getElementById(id);
 
-    foto2Input.addEventListener('change', function(e) {
-        mostrarPreview(e.target, 'preview-foto2');
-    });
+function getLocalDateString(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
 
-    // Envío del formulario
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        agregarCliente();
+function today() {
+    return getLocalDateString();
+}
+
+function setCajaFechaDefault() {
+    $('cajaFecha').value = today();
+}
+
+function isAgendaRole() {
+    return state.user?.role === 'agenda';
+}
+
+function isAdminRole() {
+    return state.user?.role === 'admin';
+}
+
+function hasLinkedBarberAccount() {
+    return Boolean(String(state.user?.barberId || '').trim());
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function normalizeText(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function normalizeServiceWorkType(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return SERVICE_WORK_TYPE_LABELS[normalized] ? normalized : DEFAULT_SERVICE_WORK_TYPE;
+}
+
+function getServiceWorkTypeLabel(value) {
+    return SERVICE_WORK_TYPE_LABELS[normalizeServiceWorkType(value)] || SERVICE_WORK_TYPE_LABELS[DEFAULT_SERVICE_WORK_TYPE];
+}
+
+function getSaleTypeLabel(value) {
+    return String(value || '').trim().toLowerCase() === 'producto' ? 'Producto' : 'Servicio';
+}
+
+function getAttendanceDetailLabel(attendance) {
+    if (attendance?.tipoVenta === 'producto') {
+        return attendance.productoNombre || attendance.productoId?.nombre || '-';
+    }
+
+    return attendance.servicioNombre || attendance.servicioId?.nombre || '-';
+}
+
+function getAttendanceCommissionLabel(attendance) {
+    const monto = Number(attendance?.comisionGanada || 0).toFixed(2);
+    if (attendance?.comisionTipo === 'monto' || attendance?.tipoVenta === 'producto') {
+        return `$${monto} fijo`;
+    }
+
+    return `$${monto} (${Number(attendance?.comisionPorcentaje || 0)}%)`;
+}
+
+function canDeleteAttendance(attendance) {
+    return (
+        isAdminRole()
+        && String(attendance?.source || 'primary').trim().toLowerCase() !== 'legacy'
+        && Boolean(String(attendance?._id || '').trim())
+    );
+}
+
+function normalizeDigits(value) {
+    return String(value || '').replace(/\D/g, '').trim();
+}
+
+function getCurrentMinutesLocal() {
+    const now = new Date();
+    return (now.getHours() * 60) + now.getMinutes();
+}
+
+function getCurrentClockLocal() {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+function getTurnoEstado(turno) {
+    return String(turno?.estado || 'pendiente').trim().toLowerCase();
+}
+
+function getTurnoEstadoLabel(estado) {
+    if (estado === 'atendido') {
+        return 'Atendido';
+    }
+
+    if (estado === 'perdido') {
+        return 'Perdido';
+    }
+
+    return 'Pendiente';
+}
+
+function getTurnoEstadoClass(estado) {
+    if (estado === 'atendido') {
+        return 'status-ok';
+    }
+
+    if (estado === 'perdido') {
+        return 'status-lost';
+    }
+
+    return 'status-pending';
+}
+
+function isTurnoDelMomento(turno, fechaActual = getLocalDateString(), minutosActuales = getCurrentMinutesLocal()) {
+    return (
+        getTurnoEstado(turno) === 'pendiente'
+        && String(turno?.fecha || '') === fechaActual
+        && Number(turno?.inicioMinutos) <= minutosActuales
+        && Number(turno?.finMinutos) > minutosActuales
+    );
+}
+
+function formatCurrency(value) {
+    return Number(value || 0).toLocaleString('es-AR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
     });
 }
 
-// Mostrar preview de foto
-function mostrarPreview(input, previewId) {
-    const preview = document.getElementById(previewId);
+function parseTimeToMinutesLocal(time) {
+    if (!/^\d{2}:\d{2}$/.test(String(time || ''))) {
+        throw new Error('Hora invalida');
+    }
 
-    if (input.files && input.files[0]) {
-        const reader = new FileReader();
+    const [hour, minute] = String(time).split(':').map(Number);
+    return (hour * 60) + minute;
+}
 
-        reader.onload = function(e) {
-            preview.src = e.target.result;
-            preview.classList.add('visible');
-        };
+function minutesToClock(totalMinutes) {
+    const hour = Math.floor(totalMinutes / 60);
+    const minute = totalMinutes % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
 
-        reader.readAsDataURL(input.files[0]);
+function getDayOfWeekLocal(dateString) {
+    const date = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) {
+        throw new Error('Fecha invalida');
+    }
+    return date.getDay();
+}
+
+function isOpenDay(dateString) {
+    if (!dateString) {
+        return false;
+    }
+    return getDayOfWeekLocal(dateString) !== 0;
+}
+
+function validarRangoReportes(desde, hasta) {
+    if (!desde || !hasta) {
+        throw new Error('Debes seleccionar fecha desde y hasta');
+    }
+
+    const from = new Date(`${desde}T00:00:00`);
+    const to = new Date(`${hasta}T00:00:00`);
+
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        throw new Error('Fechas invalidas para reportes');
+    }
+
+    if (from > to) {
+        throw new Error('La fecha desde no puede ser mayor que la fecha hasta');
+    }
+
+    const diffDays = Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    if (diffDays > 31) {
+        throw new Error('El rango mÃ¡ximo permitido es 1 mes (31 dÃ­as)');
     }
 }
 
-// Convertir archivo a base64
-function convertirABase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-    });
+function getServiceDurationMinutes(servicio) {
+    const servicioCaja = state.serviciosCaja.find((item) => item._id === servicio);
+    if (servicioCaja) {
+        return Number(servicioCaja.duracionMinutos || 30);
+    }
+
+    return Number(state.servicios[servicio]?.durationMinutes || 30);
 }
 
-// Agregar nuevo cliente
-async function agregarCliente() {
-    const nombre = document.getElementById('nombre').value;
-    const telefono = document.getElementById('telefono').value;
-    const instagram = document.getElementById('instagram').value;
-    const foto1Input = document.getElementById('foto1');
-    const foto2Input = document.getElementById('foto2');
+function getServicioTurnoLabel(turno) {
+    if (turno?.servicioNombre) {
+        return turno.servicioNombre;
+    }
 
-    // Validar que haya al menos una foto
-    if (!foto1Input.files[0] || !foto2Input.files[0]) {
-        alert('Por favor carga ambas fotos');
+    if (turno?.servicioId?.nombre) {
+        return turno.servicioId.nombre;
+    }
+
+    const servicioCaja = state.serviciosCaja.find((item) => item._id === turno?.servicio);
+    if (servicioCaja) {
+        return servicioCaja.nombre;
+    }
+
+    return state.servicios[turno?.servicio]?.label || turno?.servicio || '-';
+}
+
+function getTurnoLastStartMinutes() {
+    const servicio = $('turnoServicio')?.value || '';
+    const duration = getServiceDurationMinutes(servicio);
+    return CLOSING_MINUTES - duration;
+}
+
+function applyTurnoDateTimeConstraints() {
+    const horaInput = $('turnoHora');
+    const maxStartMinutes = getTurnoLastStartMinutes();
+
+    horaInput.min = '10:00';
+    horaInput.max = minutesToClock(maxStartMinutes);
+    horaInput.step = '900';
+
+    if (horaInput.value) {
+        const valueMinutes = parseTimeToMinutesLocal(horaInput.value);
+        if (valueMinutes < OPENING_MINUTES || valueMinutes > maxStartMinutes) {
+            horaInput.value = '';
+        }
+    }
+}
+
+function nextOpenDate(baseDateString) {
+    const baseDate = baseDateString ? new Date(`${baseDateString}T00:00:00`) : new Date();
+    const result = new Date(baseDate);
+
+    while (result.getDay() === 0) {
+        result.setDate(result.getDate() + 1);
+    }
+
+    return result.toISOString().slice(0, 10);
+}
+
+function getMondayDateString(baseDateString) {
+    const baseDate = baseDateString ? new Date(`${baseDateString}T00:00:00`) : new Date();
+    const monday = new Date(baseDate);
+    const day = monday.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    monday.setDate(monday.getDate() + diff);
+    return monday.toISOString().slice(0, 10);
+}
+
+function showMessage(message, type = 'success') {
+    const box = $('appMessage');
+    const text = $('appMessageText');
+
+    if (text) {
+        text.textContent = message;
+    } else {
+        box.textContent = message;
+    }
+
+    box.className = `message ${type}`;
+    box.classList.remove('hidden');
+}
+
+function hideMessage() {
+    const box = $('appMessage');
+    box.classList.add('hidden');
+}
+
+function showLoading(text = 'Cargando...') {
+    const overlay = $('appLoading');
+    const label = $('appLoadingText');
+
+    loadingRequests += 1;
+    if (label) {
+        label.textContent = text;
+    }
+
+    if (loadingRequests > 1 || loadingTimerId) {
         return;
     }
 
+    loadingTimerId = window.setTimeout(() => {
+        if (loadingRequests > 0) {
+            overlay.classList.remove('hidden');
+        }
+        loadingTimerId = null;
+    }, 150);
+}
+
+function hideLoading() {
+    const overlay = $('appLoading');
+    loadingRequests = Math.max(0, loadingRequests - 1);
+
+    if (loadingRequests > 0) {
+        return;
+    }
+
+    if (loadingTimerId) {
+        clearTimeout(loadingTimerId);
+        loadingTimerId = null;
+    }
+
+    overlay.classList.add('hidden');
+}
+
+async function apiFetch(url, options = {}) {
+    const {
+        auth = true,
+        method = 'GET',
+        body,
+        headers = {},
+        showLoading: shouldShowLoading = true,
+        loadingText = 'Cargando...'
+    } = options;
+
+    const requestHeaders = {
+        ...headers
+    };
+
+    if (body !== undefined && !requestHeaders['Content-Type']) {
+        requestHeaders['Content-Type'] = 'application/json';
+    }
+
+    if (auth && state.token) {
+        requestHeaders.Authorization = `Bearer ${state.token}`;
+    }
+
+    if (shouldShowLoading) {
+        showLoading(loadingText);
+    }
+
     try {
-        // Convertir fotos a base64
-        const foto1 = await convertirABase64(foto1Input.files[0]);
-        const foto2 = await convertirABase64(foto2Input.files[0]);
-
-        // Crear objeto cliente
-        const nuevoCliente = {
-            nombre: nombre,
-            telefono: telefono,
-            instagram: instagram,
-            foto1: foto1,
-            foto2: foto2
-        };
-
-        // Enviar al servidor
-        const response = await fetch(`${API_URL}/clientes`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(nuevoCliente)
+        const response = await fetch(url, {
+            method,
+            headers: requestHeaders,
+            body: body !== undefined ? JSON.stringify(body) : undefined
         });
 
-        if (!response.ok) {
-            throw new Error('Error al guardar el cliente');
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (error) {
+            payload = null;
         }
 
-        const clienteGuardado = await response.json();
+        if (!response.ok) {
+            throw new Error(payload?.error || 'Error en la solicitud');
+        }
 
-        // Agregar a array local
-        clientes.push(clienteGuardado);
-
-        // Limpiar formulario
-        document.getElementById('clienteForm').reset();
-        document.getElementById('preview-foto1').classList.remove('visible');
-        document.getElementById('preview-foto2').classList.remove('visible');
-
-        // Actualizar interfaz
-        renderizarListado();
-
-        alert('Cliente guardado correctamente');
-    } catch (error) {
-        alert('Error: ' + error.message);
+        return payload;
+    } finally {
+        if (shouldShowLoading) {
+            hideLoading();
+        }
     }
 }
 
-// Cargar clientes del servidor
-async function cargarClientes() {
+async function downloadFile(url, fallbackName) {
+    const headers = {};
+    if (state.token) {
+        headers.Authorization = `Bearer ${state.token}`;
+    }
+
+    showLoading('Preparando descarga...');
+
     try {
-        const response = await fetch(`${API_URL}/clientes`);
+        const response = await fetch(url, { headers });
+
         if (!response.ok) {
-            throw new Error('Error al cargar clientes');
+            let payload = null;
+            try {
+                payload = await response.json();
+            } catch (error) {
+                payload = null;
+            }
+            throw new Error(payload?.error || 'No se pudo descargar el archivo');
         }
-        clientes = await response.json();
-        renderizarListado();
-    } catch (error) {
-        console.error('Error:', error);
-        document.getElementById('clientesList').innerHTML = '<p class="empty-message">Error al cargar los clientes</p>';
+
+        const blob = await response.blob();
+        const disposition = response.headers.get('content-disposition') || '';
+        const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+        const fileName = match?.[1] || fallbackName;
+
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+    } finally {
+        hideLoading();
     }
 }
 
-// Renderizar listado de clientes
-function renderizarListado() {
-    const clientesList = document.getElementById('clientesList');
+function applyRoleVisibility() {
+    const isAdmin = isAdminRole();
+    const isAgenda = isAgendaRole();
 
-    if (clientes.length === 0) {
-        clientesList.innerHTML = '<p class="empty-message">No hay clientes aún</p>';
+    document.querySelectorAll('.admin-only').forEach((element) => {
+        element.classList.toggle('hidden', !isAdmin);
+    });
+
+    document.querySelectorAll('.restricted-agenda').forEach((element) => {
+        element.classList.toggle('hidden', isAgenda);
+    });
+
+    if (isAgenda) {
+        setTab('turnos');
         return;
     }
 
-    clientesList.innerHTML = clientes.map(cliente => `
-        <div class="cliente-item ${clienteSeleccionado && clienteSeleccionado.id === cliente.id ? 'active' : ''}" 
-             onclick='seleccionarCliente(${JSON.stringify(cliente.id)})'>
-            <div class="cliente-item-nombre">${cliente.nombre}</div>
-            <div class="cliente-item-telefono">${cliente.telefono}</div>
+    const activeBtn = document.querySelector('.tab-btn.active');
+    if (activeBtn && activeBtn.classList.contains('hidden')) {
+        setTab('dashboard');
+    }
+}
+
+function setTab(tabName) {
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+        if (btn.classList.contains('hidden')) {
+            btn.classList.remove('active');
+            return;
+        }
+
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+
+    document.querySelectorAll('.tab-panel').forEach((panel) => {
+        const isRestrictedForAgenda = isAgendaRole() && panel.classList.contains('restricted-agenda');
+        panel.classList.toggle('hidden', panel.id !== `tab-${tabName}` || isRestrictedForAgenda);
+    });
+}
+
+async function ensureTabData(tabName, force = false) {
+    if (!force && state.loadedTabs[tabName]) {
+        return;
+    }
+
+    if (tabName === 'dashboard') {
+        await cargarDashboard();
+    } else if (tabName === 'turnos') {
+        await Promise.all([
+            cargarServiciosCaja(),
+            cargarPeluqueros(),
+            cargarClientes(),
+            cargarTurnos(),
+            cargarTurnosDelMomento({ silent: true })
+        ]);
+    } else if (tabName === 'clientes') {
+        await cargarClientes();
+    } else if (tabName === 'cumpleanos') {
+        await cargarCumpleanos();
+    } else if (tabName === 'peluqueros') {
+        await cargarPeluqueros();
+    } else if (tabName === 'servicios') {
+        await cargarServiciosCaja();
+    } else if (tabName === 'productos') {
+        await cargarProductos();
+    } else if (tabName === 'caja') {
+        await Promise.all([
+            cargarServiciosCaja(),
+            cargarProductos(),
+            cargarPeluqueros(),
+            cargarClientes(),
+            cargarAtenciones()
+        ]);
+    } else if (tabName === 'reportes') {
+        await Promise.all([
+            cargarPeluqueros(),
+            cargarReporteDia()
+        ]);
+    } else if (tabName === 'usuarios') {
+        await Promise.all([
+            cargarPeluqueros(),
+            cargarUsuarios()
+        ]);
+    }
+
+    state.loadedTabs[tabName] = true;
+}
+
+async function activateTab(tabName, options = {}) {
+    const { force = false } = options;
+    const wasLoaded = Boolean(state.loadedTabs[tabName]);
+    setTab(tabName);
+
+    if (tabName === 'caja') {
+        setCajaFechaDefault();
+        updateCajaVentaFields();
+    }
+
+    if (tabName === 'turnos') {
+        startTurnosAhoraWatcher();
+    } else {
+        stopTurnosAhoraWatcher();
+        state.turnosDelMomento = [];
+        renderTurnosAhoraPanel();
+    }
+
+    await ensureTabData(tabName, force);
+
+    if (tabName === 'caja' && wasLoaded && !force) {
+        await cargarAtenciones();
+    }
+}
+
+function scheduleToText(agenda) {
+    return agenda
+        .slice()
+        .sort((a, b) => a.dayOfWeek - b.dayOfWeek)
+        .map((slot) => `${DAY_NAMES[slot.dayOfWeek]} ${slot.start}-${slot.end}`)
+        .join(', ');
+}
+
+function completarSelectPeluqueros() {
+    const activos = state.peluqueros
+        .filter((p) => p.activo)
+        .map((p) => ({ id: p._id, nombre: p.nombre }));
+
+    const options = ['<option value="">Sin asignar</option>']
+        .concat(activos
+        .map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`)
+        ).join('');
+
+    const turnoPeluqueroSelect = $('turnoPeluquero');
+    if (turnoPeluqueroSelect) {
+        turnoPeluqueroSelect.innerHTML = options;
+    }
+
+    const cajaPeluqueroSelect = $('cajaPeluquero');
+    if (cajaPeluqueroSelect) {
+        cajaPeluqueroSelect.innerHTML = options;
+    }
+
+    const filtro = $('turnosFiltroPeluquero');
+    const current = filtro.value;
+    const filtroOptions = ['<option value="">Todos</option>']
+        .concat(activos.map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`))
+        .join('');
+    filtro.innerHTML = filtroOptions;
+
+    if (current && activos.some((p) => p.id === current)) {
+        filtro.value = current;
+    }
+
+    const reportePeluqueroSelect = $('reportePeluquero');
+    if (reportePeluqueroSelect) {
+        const currentReport = reportePeluqueroSelect.value;
+        const reportOptions = ['<option value="">Todos</option>']
+            .concat(activos.map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`))
+            .join('');
+        reportePeluqueroSelect.innerHTML = reportOptions;
+
+        if (currentReport && activos.some((p) => p.id === currentReport)) {
+            reportePeluqueroSelect.value = currentReport;
+        }
+    }
+
+    const userBarberOptions = ['<option value="">Sin asociar</option>']
+        .concat(activos.map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`))
+        .join('');
+
+    const usuarioPeluqueroSelect = $('usuarioPeluquero');
+    if (usuarioPeluqueroSelect) {
+        const currentUserBarber = usuarioPeluqueroSelect.value;
+        usuarioPeluqueroSelect.innerHTML = userBarberOptions;
+        if (currentUserBarber && activos.some((p) => p.id === currentUserBarber)) {
+            usuarioPeluqueroSelect.value = currentUserBarber;
+        }
+    }
+
+    const editarUsuarioPeluqueroSelect = $('editarUsuarioPeluquero');
+    if (editarUsuarioPeluqueroSelect) {
+        const currentEditBarber = editarUsuarioPeluqueroSelect.value;
+        editarUsuarioPeluqueroSelect.innerHTML = userBarberOptions;
+        if (currentEditBarber && activos.some((p) => p.id === currentEditBarber)) {
+            editarUsuarioPeluqueroSelect.value = currentEditBarber;
+        }
+    }
+}
+
+function getCajaSelectedSaleType() {
+    return String($('cajaTipoVenta')?.value || 'servicio').trim().toLowerCase() === 'producto'
+        ? 'producto'
+        : 'servicio';
+}
+
+function syncCajaMonto() {
+    const saleType = getCajaSelectedSaleType();
+
+    if (saleType === 'producto') {
+        const productoId = $('cajaProducto')?.value || '';
+        const producto = state.productos.find((item) => item._id === productoId);
+        $('cajaMonto').value = producto ? Number(producto.precio).toFixed(2) : '';
+        return;
+    }
+
+    const servicioId = $('cajaServicio')?.value || '';
+    const servicio = state.serviciosCaja.find((item) => item._id === servicioId);
+    $('cajaMonto').value = servicio ? Number(servicio.precio).toFixed(2) : '';
+}
+
+function getCajaSelectedWorkType() {
+    return normalizeServiceWorkType($('cajaTipoTrabajo')?.value || DEFAULT_SERVICE_WORK_TYPE);
+}
+
+function getCajaServiciosDisponibles() {
+    const tipoTrabajo = getCajaSelectedWorkType();
+    return state.serviciosCaja.filter((servicio) => normalizeServiceWorkType(servicio.tipoTrabajo) === tipoTrabajo);
+}
+
+function updateCajaVentaFields() {
+    const saleType = getCajaSelectedSaleType();
+    const isProducto = saleType === 'producto';
+
+    $('cajaTipoTrabajoGroup')?.classList.toggle('hidden', isProducto);
+    $('cajaServicioGroup')?.classList.toggle('hidden', isProducto);
+    $('cajaProductoGroup')?.classList.toggle('hidden', !isProducto);
+
+    if ($('cajaTipoTrabajo')) {
+        $('cajaTipoTrabajo').required = !isProducto;
+    }
+
+    if ($('cajaServicio')) {
+        $('cajaServicio').required = !isProducto;
+    }
+
+    if ($('cajaProducto')) {
+        $('cajaProducto').required = isProducto;
+    }
+
+    syncCajaMonto();
+}
+
+function renderCajaServiciosSelect() {
+    const select = $('cajaServicio');
+    if (!select) {
+        return;
+    }
+
+    const tipoTrabajo = getCajaSelectedWorkType();
+    if ($('cajaTipoTrabajo')) {
+        $('cajaTipoTrabajo').value = tipoTrabajo;
+    }
+
+    const serviciosDisponibles = getCajaServiciosDisponibles();
+
+    if (!serviciosDisponibles.length) {
+        select.innerHTML = '<option value="">Sin servicios para este trabajo</option>';
+        select.value = '';
+        $('cajaMonto').value = '';
+        return;
+    }
+
+    const options = serviciosDisponibles
+        .map((servicio) => (
+            `<option value="${servicio._id}">${escapeHtml(servicio.nombre)}</option>`
+        ))
+        .join('');
+
+    const current = select.value;
+    select.innerHTML = options;
+
+    if (current && serviciosDisponibles.some((item) => item._id === current)) {
+        select.value = current;
+    } else {
+        select.value = serviciosDisponibles[0]._id;
+    }
+
+    syncCajaMonto();
+}
+
+function renderCajaProductosSelect() {
+    const select = $('cajaProducto');
+    if (!select) {
+        return;
+    }
+
+    if (!state.productos.length) {
+        select.innerHTML = '<option value="">Sin productos cargados</option>';
+        select.value = '';
+        syncCajaMonto();
+        return;
+    }
+
+    const current = select.value;
+    select.innerHTML = state.productos.map((producto) => (
+        `<option value="${producto._id}">${escapeHtml(producto.nombre)}</option>`
+    )).join('');
+
+    if (current && state.productos.some((item) => item._id === current)) {
+        select.value = current;
+    } else {
+        select.value = state.productos[0]._id;
+    }
+
+    syncCajaMonto();
+}
+
+function renderTurnoServiciosSelect() {
+    const select = $('turnoServicio');
+    if (!select) {
+        return;
+    }
+
+    if (!state.serviciosCaja.length) {
+        select.innerHTML = '<option value="">Sin servicios disponibles</option>';
+        select.value = '';
+        applyTurnoDateTimeConstraints();
+        return;
+    }
+
+    const current = select.value;
+    select.innerHTML = state.serviciosCaja.map((servicio) => (
+        `<option value="${servicio._id}">${escapeHtml(servicio.nombre)} (${Number(servicio.duracionMinutos || 30)} min)</option>`
+    )).join('');
+
+    if (current && state.serviciosCaja.some((item) => item._id === current)) {
+        select.value = current;
+    } else {
+        select.value = state.serviciosCaja[0]._id;
+    }
+
+    applyTurnoDateTimeConstraints();
+}
+
+function renderPeluquerosTable() {
+    const body = $('peluquerosTableBody');
+
+    body.innerHTML = state.peluqueros.map((p) => `
+        <tr>
+            <td>${escapeHtml(p.nombre)}</td>
+            <td>${escapeHtml(p.telefono || '-')}</td>
+            <td>${escapeHtml(p.fechaCumpleanos ? formatDateLabel(p.fechaCumpleanos) : '-')}</td>
+            <td>${p.porcentajeComision}%</td>
+            <td>${escapeHtml(scheduleToText(p.agenda))}</td>
+            <td>${p.activo ? 'Si' : 'No'}</td>
+            <td>
+                <div class="row-actions">
+                    <button class="btn" type="button" data-action="edit-peluquero" data-id="${p._id}">Editar</button>
+                    <button class="btn danger" type="button" data-action="delete-peluquero" data-id="${p._id}">Eliminar</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderServiciosTable() {
+    const body = $('serviciosTableBody');
+    if (!body) {
+        return;
+    }
+
+    if (!state.serviciosCaja.length) {
+        body.innerHTML = '<tr><td colspan="5">No hay servicios cargados.</td></tr>';
+        return;
+    }
+
+    const serviciosOrdenados = state.serviciosCaja.slice().sort((a, b) => {
+        const tipoA = getServiceWorkTypeLabel(a.tipoTrabajo);
+        const tipoB = getServiceWorkTypeLabel(b.tipoTrabajo);
+        const compareType = tipoA.localeCompare(tipoB);
+        if (compareType !== 0) {
+            return compareType;
+        }
+        return String(a.nombre || '').localeCompare(String(b.nombre || ''));
+    });
+
+    body.innerHTML = serviciosOrdenados.map((servicio) => `
+        <tr>
+            <td>${escapeHtml(getServiceWorkTypeLabel(servicio.tipoTrabajo))}</td>
+            <td>${escapeHtml(servicio.nombre)}</td>
+            <td>$${formatCurrency(servicio.precio)}</td>
+            <td>${Number(servicio.duracionMinutos || 30)} min</td>
+            <td>
+                <div class="row-actions">
+                    <button class="btn" type="button" data-action="edit-servicio" data-id="${servicio._id}">Editar</button>
+                    <button class="btn danger" type="button" data-action="delete-servicio" data-id="${servicio._id}">Eliminar</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderProductosTable() {
+    const body = $('productosTableBody');
+    if (!body) {
+        return;
+    }
+
+    if (!state.productos.length) {
+        body.innerHTML = '<tr><td colspan="4">No hay productos cargados.</td></tr>';
+        return;
+    }
+
+    const productosOrdenados = state.productos.slice().sort((a, b) => (
+        String(a.nombre || '').localeCompare(String(b.nombre || ''))
+    ));
+
+    body.innerHTML = productosOrdenados.map((producto) => `
+        <tr>
+            <td>${escapeHtml(producto.nombre)}</td>
+            <td>$${formatCurrency(producto.precio)}</td>
+            <td>$${formatCurrency(producto.comisionMonto)}</td>
+            <td>
+                <div class="row-actions">
+                    <button class="btn" type="button" data-action="edit-producto" data-id="${producto._id}">Editar</button>
+                    <button class="btn danger" type="button" data-action="delete-producto" data-id="${producto._id}">Eliminar</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderTurnoActionButtons(turno, includeDelete = false) {
+    const estado = getTurnoEstado(turno);
+    const buttons = [];
+
+    if (estado === 'pendiente') {
+        buttons.push(
+            `<button class="btn primary" type="button" data-action="mark-turno-status" data-id="${turno._id}" data-status="atendido">Atendido</button>`
+        );
+        buttons.push(
+            `<button class="btn danger" type="button" data-action="mark-turno-status" data-id="${turno._id}" data-status="perdido">Perdido</button>`
+        );
+    } else {
+        buttons.push(
+            `<button class="btn" type="button" data-action="mark-turno-status" data-id="${turno._id}" data-status="pendiente">Volver a pendiente</button>`
+        );
+    }
+
+    if (includeDelete) {
+        buttons.push(
+            `<button class="btn danger" type="button" data-action="delete-turno" data-id="${turno._id}">Eliminar</button>`
+        );
+    }
+
+    return `<div class="row-actions">${buttons.join('')}</div>`;
+}
+
+function renderTurnosTable() {
+    const body = $('turnosTableBody');
+    const peluqueroSeleccionado = $('turnosFiltroPeluquero')?.value || '';
+    const fechaActual = getLocalDateString();
+    const minutosActuales = getCurrentMinutesLocal();
+    const turnosVisibles = state.turnos.filter((turno) => {
+        if (!peluqueroSeleccionado) {
+            return true;
+        }
+        return String(turno.peluquero?._id || '') === String(peluqueroSeleccionado);
+    });
+
+    if (!turnosVisibles.length) {
+        body.innerHTML = '<tr><td colspan="7">No hay reservas para ese filtro.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = turnosVisibles.map((t) => {
+        const servicio = getServicioTurnoLabel(t);
+        const hasPhotos = Boolean(t.foto1 || t.foto2);
+        const fotosCell = hasPhotos
+            ? `<button class="btn photo-thumb-btn" type="button" data-action="view-turno-fotos" data-id="${t._id}">Ver fotos</button>`
+            : '-';
+        const estado = getTurnoEstado(t);
+        const estadoCell = `<span class="status-chip ${getTurnoEstadoClass(estado)}">${getTurnoEstadoLabel(estado)}</span>`;
+        const rowClass = isTurnoDelMomento(t, fechaActual, minutosActuales) ? 'turno-row turno-current' : 'turno-row';
+
+        return `
+            <tr class="${rowClass}">
+                <td>${t.horaInicio} - ${t.horaFin}</td>
+                <td>${escapeHtml(t.peluquero?.nombre || '-')}</td>
+                <td>${escapeHtml(servicio)}</td>
+                <td>${escapeHtml(t.cliente || '-')}</td>
+                <td>${estadoCell}</td>
+                <td>${fotosCell}</td>
+                <td>${renderTurnoActionButtons(t, !isAgendaRole())}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderTurnosAhoraPanel() {
+    const panel = $('turnosAhoraPanel');
+    const resumen = $('turnosAhoraResumen');
+    const list = $('turnosAhoraList');
+
+    if (!panel || !resumen || !list) {
+        return;
+    }
+
+    if (!state.turnosDelMomento.length) {
+        panel.classList.add('hidden');
+        resumen.textContent = 'Avisos de turnos que ya estan en horario.';
+        list.innerHTML = '';
+        return;
+    }
+
+    panel.classList.remove('hidden');
+    resumen.textContent = `Hay ${state.turnosDelMomento.length} turno(s) en horario para atender ahora.`;
+    list.innerHTML = state.turnosDelMomento.map((turno) => {
+        const servicio = getServicioTurnoLabel(turno);
+        return `
+            <article class="turno-alert-card">
+                <div class="turno-alert-copy">
+                    <strong>${escapeHtml(turno.cliente || 'Cliente sin nombre')} - ${escapeHtml(turno.peluquero?.nombre || 'Sin peluquero')}</strong>
+                    <p>${escapeHtml(turno.horaInicio)} a ${escapeHtml(turno.horaFin)} Â· ${escapeHtml(servicio)}</p>
+                </div>
+                ${renderTurnoActionButtons(turno)}
+            </article>
+        `;
+    }).join('');
+}
+
+function syncTurnoInCollection(collection, turnoActualizado) {
+    const index = collection.findIndex((item) => item._id === turnoActualizado._id);
+    if (index >= 0) {
+        collection[index] = turnoActualizado;
+    }
+}
+
+function syncTurnoActualizado(turnoActualizado) {
+    syncTurnoInCollection(state.turnos, turnoActualizado);
+    syncTurnoInCollection(state.turnosDelMomento, turnoActualizado);
+
+    if (!isTurnoDelMomento(turnoActualizado)) {
+        state.turnosDelMomento = state.turnosDelMomento.filter((item) => item._id !== turnoActualizado._id);
+    }
+
+    renderTurnosTable();
+    renderTurnosAhoraPanel();
+}
+
+function avisarTurnosDelMomento(turnos) {
+    const nuevos = turnos.filter((turno) => !turnosAlertados.has(turno._id));
+    if (!nuevos.length) {
+        return;
+    }
+
+    nuevos.forEach((turno) => {
+        turnosAlertados.add(turno._id);
+    });
+
+    const mensaje = nuevos
+        .map((turno) => `${turno.horaInicio} ${turno.cliente || 'Cliente sin nombre'} con ${turno.peluquero?.nombre || 'Sin peluquero'}`)
+        .join(' | ');
+
+    showMessage(`Turno en horario: ${mensaje}`, 'success');
+}
+
+function completarClientesDatalist() {
+    const options = state.clientes
+        .map((cliente) => (
+            `<option value="${escapeHtml(cliente.nombre)}" label="Tel ${escapeHtml(cliente.telefono || '-')}"></option>`
+        ))
+        .join('');
+
+    const datalistClientes = $('clientesDatalist');
+    if (datalistClientes) {
+        datalistClientes.innerHTML = options;
+    }
+
+    const datalistCaja = $('cajaClientesDatalist');
+    if (datalistCaja) {
+        datalistCaja.innerHTML = '<option value="Sin asignar"></option>' + options;
+    }
+}
+
+function renderClientesList() {
+    const list = $('clientesList');
+    const rawSearch = $('clientesSearch')?.value || '';
+    const search = normalizeText(rawSearch);
+    const searchDigits = normalizeDigits(rawSearch);
+
+    const visibles = state.clientes.filter((cliente) => {
+        const byName = normalizeText(cliente.nombre).includes(search);
+        const byPhone = searchDigits ? normalizeDigits(cliente.telefono).includes(searchDigits) : false;
+        return byName || byPhone;
+    });
+
+    if (!visibles.length) {
+        list.innerHTML = '<p class="cliente-vacio">No hay clientes cargados.</p>';
+        return;
+    }
+
+    list.innerHTML = visibles.map((cliente) => `
+        <div class="cliente-item ${state.selectedClienteId === cliente._id ? 'active' : ''}" data-action="select-cliente" data-id="${cliente._id}">
+            <strong>${escapeHtml(cliente.nombre)}</strong>
+            <small>Tel: ${escapeHtml(cliente.telefono || '-')}</small>
+            <small>
+                ${cliente.ultimaAtencion
+        ? `Ultima atencion: ${escapeHtml(cliente.ultimaAtencion)}${cliente.ultimaAtencionPeluquero ? ` - ${escapeHtml(cliente.ultimaAtencionPeluquero)}` : ''}`
+        : 'Sin atenciones'}
+            </small>
         </div>
     `).join('');
 }
 
-// Seleccionar cliente
-function seleccionarCliente(clienteId) {
-    clienteSeleccionado = clientes.find(c => c.id === clienteId);
-    renderizarListado();
-    mostrarDetallesCliente();
-}
+function renderClienteDetalle() {
+    const cliente = state.clientes.find((item) => item._id === state.selectedClienteId);
 
-// Mostrar detalles del cliente
-function mostrarDetallesCliente() {
-    const detallesDiv = document.getElementById('clienteDetalles');
-
-    if (!clienteSeleccionado) {
-        detallesDiv.innerHTML = '<p class="empty-message">Selecciona un cliente para ver los detalles</p>';
+    if (!cliente) {
+        $('clienteDetalleVacio').classList.remove('hidden');
+        $('clienteDetalle').classList.add('hidden');
         return;
     }
 
-    detallesDiv.innerHTML = `
-        <div class="cliente-info">
-            <h3 style="color: var(--color-primary); margin-bottom: 1.5rem;">${clienteSeleccionado.nombre}</h3>
+    $('clienteDetalleVacio').classList.add('hidden');
+    $('clienteDetalle').classList.remove('hidden');
+    $('clienteNombre').textContent = cliente.nombre || '-';
+    $('clienteTelefono').textContent = cliente.telefono || '-';
+    $('clienteInstagram').textContent = cliente.instagram || '-';
+    $('clienteFechaCumple').textContent = formatDateLabel(cliente.fechaCumpleanos);
+    $('clienteUltimaAtencion').textContent = cliente.ultimaAtencion || '-';
+    $('clienteUltimaAtencionPeluquero').textContent = cliente.ultimaAtencionPeluquero || '-';
 
-            <div class="info-field">
-                <span class="info-label">📞 Teléfono:</span>
-                <span class="info-value">
-                    <a href="tel:${clienteSeleccionado.telefono}">${clienteSeleccionado.telefono}</a>
-                </span>
-            </div>
+    const foto1 = $('clienteFoto1');
+    const foto2 = $('clienteFoto2');
 
-            <div class="info-field">
-                <span class="info-label">📱 Instagram:</span>
-                <span class="info-value">
-                    ${clienteSeleccionado.instagram ? `<a href="https://instagram.com/${clienteSeleccionado.instagram}" target="_blank">@${clienteSeleccionado.instagram}</a>` : 'No registrado'}
-                </span>
-            </div>
-        </div>
+    if (cliente.foto1) {
+        foto1.src = cliente.foto1;
+        foto1.classList.remove('hidden');
+    } else {
+        foto1.src = '';
+        foto1.classList.add('hidden');
+    }
 
-        <div class="fotos-display">
-            <div class="foto-item" onclick="abrirModal()">
-                <img src="${clienteSeleccionado.foto1}" alt="Foto 1">
-                <button class="foto-eliminar-btn" onclick='event.stopPropagation(); eliminarFoto(${JSON.stringify(clienteSeleccionado.id)}, 1)'>×</button>
-            </div>
-            <div class="foto-item" onclick="abrirModal()">
-                <img src="${clienteSeleccionado.foto2}" alt="Foto 2">
-                <button class="foto-eliminar-btn" onclick='event.stopPropagation(); eliminarFoto(${JSON.stringify(clienteSeleccionado.id)}, 2)'>×</button>
-            </div>
-        </div>
-
-        <div class="acciones">
-            <button class="btn btn-secondary" onclick="cargarNuevaFoto(1)">Cambiar Foto 1</button>
-            <button class="btn btn-secondary" onclick="cargarNuevaFoto(2)">Cambiar Foto 2</button>
-            <button class="btn btn-danger" onclick='eliminarCliente(${JSON.stringify(clienteSeleccionado.id)})'>Eliminar Cliente</button>
-        </div>
-    `;
-}
-
-// Eliminar foto
-async function eliminarFoto(clienteId, numeroFoto) {
-    if (confirm('¿Estás seguro de que quieres eliminar esta foto?')) {
-        const cliente = clientes.find(c => c.id === clienteId);
-        if (cliente) {
-            if (numeroFoto === 1) {
-                cliente.foto1 = null;
-            } else {
-                cliente.foto2 = null;
-            }
-            alert('Debes cargar una nueva foto antes de guardar');
-            mostrarDetallesCliente();
-        }
+    if (cliente.foto2) {
+        foto2.src = cliente.foto2;
+        foto2.classList.remove('hidden');
+    } else {
+        foto2.src = '';
+        foto2.classList.add('hidden');
     }
 }
 
-// Cargar nueva foto
-function cargarNuevaFoto(numeroFoto) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
+function mergeClienteInState(clienteActualizado) {
+    const index = state.clientes.findIndex((item) => item._id === clienteActualizado._id);
+    if (index >= 0) {
+        state.clientes[index] = {
+            ...state.clientes[index],
+            ...clienteActualizado,
+            detalleCargado: true
+        };
+        return state.clientes[index];
+    }
 
-    input.onchange = async function(e) {
-        if (e.target.files[0]) {
+    const nuevoCliente = {
+        ...clienteActualizado,
+        detalleCargado: true
+    };
+    state.clientes.push(nuevoCliente);
+    return nuevoCliente;
+}
+
+async function ensureClienteDetalle(clienteId) {
+    const cliente = state.clientes.find((item) => item._id === clienteId);
+    if (!cliente) {
+        return null;
+    }
+
+    if (cliente.detalleCargado) {
+        return cliente;
+    }
+
+    const detalle = await apiFetch(`/api/clientes/${clienteId}`);
+    return mergeClienteInState(detalle);
+}
+
+function resetClienteForm() {
+    $('clienteIdInput').value = '';
+    $('clienteFormTitle').textContent = 'Nuevo cliente';
+    $('clienteSubmitBtn').textContent = 'Guardar cliente';
+    $('cancelEditCliente').classList.add('hidden');
+    $('clienteForm').reset();
+    clearClientePhotos();
+}
+
+async function fillClienteForm(clienteId) {
+    let cliente = state.clientes.find((item) => item._id === clienteId);
+    if (!cliente) {
+        showMessage('Selecciona un cliente valido para editar', 'error');
+        return;
+    }
+
+    if (!cliente.detalleCargado) {
+        try {
+            cliente = await ensureClienteDetalle(clienteId);
+        } catch (error) {
+            showMessage(error.message, 'error');
+            return;
+        }
+    }
+
+    const parsed = splitFullName(cliente.nombre);
+    $('clienteIdInput').value = cliente._id;
+    $('clienteFormTitle').textContent = 'Editar cliente';
+    $('clienteSubmitBtn').textContent = 'Guardar cambios';
+    $('cancelEditCliente').classList.remove('hidden');
+    $('clienteNombreInput').value = parsed.nombre || '';
+    $('clienteApellidoInput').value = parsed.apellido || '';
+    $('clienteTelefonoInput').value = cliente.telefono || '';
+    $('clienteInstagramInput').value = cliente.instagram || '';
+    $('clienteFechaCumpleInput').value = formatDateLabel(cliente.fechaCumpleanos);
+    setClienteFormPhoto('1', cliente.foto1 || '');
+    setClienteFormPhoto('2', cliente.foto2 || '');
+}
+
+function getMonthDayFromDateString(value) {
+    const text = String(value || '').trim();
+    let parts = null;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        const [year, month, day] = text.split('-').map(Number);
+        parts = { year, month, day };
+    } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
+        const [day, month, year] = text.split('/').map(Number);
+        parts = { year, month, day };
+    } else {
+        return null;
+    }
+
+    const date = new Date(parts.year, parts.month - 1, parts.day);
+    if (
+        Number.isNaN(date.getTime())
+        || date.getFullYear() !== parts.year
+        || date.getMonth() !== parts.month - 1
+        || date.getDate() !== parts.day
+    ) {
+        return null;
+    }
+
+    return {
+        month: parts.month,
+        day: parts.day
+    };
+}
+
+function formatDateLabel(dateString) {
+    const text = String(dateString || '').trim();
+    if (!text) {
+        return '-';
+    }
+
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
+        return text;
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        const parsed = new Date(`${text}T00:00:00`);
+        if (!Number.isNaN(parsed.getTime())) {
+            return parsed.toLocaleDateString('es-AR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        }
+    }
+
+    return text;
+}
+
+function formatBirthdayInputValue(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+    const parts = [];
+
+    if (digits.length > 0) {
+        parts.push(digits.slice(0, 2));
+    }
+    if (digits.length > 2) {
+        parts.push(digits.slice(2, 4));
+    }
+    if (digits.length > 4) {
+        parts.push(digits.slice(4, 8));
+    }
+
+    return parts.join('/');
+}
+
+function toWhatsAppNumber(rawPhone) {
+    const digits = normalizeDigits(rawPhone);
+    if (!digits) {
+        return '';
+    }
+
+    if (digits.startsWith('54')) {
+        return digits;
+    }
+
+    if (digits.startsWith('0')) {
+        return `54${digits.slice(1)}`;
+    }
+
+    if (digits.length >= 10) {
+        return `54${digits}`;
+    }
+
+    return digits;
+}
+
+function buildCumpleMessage(clienteNombre, fechaSeleccionada) {
+    const nombre = String(clienteNombre || '').trim().split(/\s+/).filter(Boolean)[0] || '';
+    const fechaCompleta = formatDateLabel(fechaSeleccionada);
+    const fechaTexto = /^\d{2}\/\d{2}\/\d{4}$/.test(fechaCompleta)
+        ? fechaCompleta.slice(0, 5)
+        : fechaCompleta;
+
+    return `Hola ${nombre}!
+El, ${fechaTexto} es tu cumple y en Salón Milano queremos celebrarlo con vos.
+🎁 Tenés un corte de regalo para usar ese día. Escribinos y reservá tu turno 👉
+Te esperamos 💈✨
+- Salón Milano 🪞`;
+}
+
+function toDateStringLocal(date) {
+    return date.toISOString().slice(0, 10);
+}
+
+function buildCumpleMessage(clienteNombre, fechaSeleccionada) {
+    const nombre = String(clienteNombre || '').trim().split(/\s+/).filter(Boolean)[0] || '';
+    const fechaCompleta = formatDateLabel(fechaSeleccionada);
+    const fechaTexto = /^\d{2}\/\d{2}\/\d{4}$/.test(fechaCompleta)
+        ? fechaCompleta.slice(0, 5)
+        : fechaCompleta;
+    const regaloEmoji = '\uD83C\uDF81';
+    const dedoEmoji = '\uD83D\uDC49';
+    const barberEmoji = '\uD83D\uDC88';
+    const brilloEmoji = '\u2728';
+    const espejoEmoji = '\uD83E\uDE9E';
+
+    return `Hola ${nombre}!
+El, ${fechaTexto} es tu cumple y en Salón Milano queremos celebrarlo con vos.
+${regaloEmoji} Tenés un corte de regalo para usar ese día. Escribinos y reservá tu turno ${dedoEmoji}
+Te esperamos ${barberEmoji}${brilloEmoji}
+- Salón Milano ${espejoEmoji}`;
+}
+
+function getBirthdayEntriesForDate(dateString) {
+    const target = getMonthDayFromDateString(dateString);
+    if (!target) {
+        return [];
+    }
+
+    const clientes = state.cumpleClientes.filter((cliente) => {
+        const cumple = getMonthDayFromDateString(cliente.fechaCumpleanos);
+        return cumple && cumple.month === target.month && cumple.day === target.day;
+    }).map((cliente) => ({
+        fecha: dateString,
+        tipo: 'Cliente',
+        tipoClass: 'cumple-badge-cliente',
+        clienteId: cliente._id || '',
+        historialDisponible: Boolean(cliente.historialDisponible),
+        nombreCompleto: cliente.nombre || '',
+        telefono: String(cliente.telefono || '').trim()
+    }));
+
+    const personal = state.cumplePeluqueros.filter((peluquero) => {
+        const cumple = getMonthDayFromDateString(peluquero.fechaCumpleanos);
+        return cumple && cumple.month === target.month && cumple.day === target.day;
+    }).map((peluquero) => ({
+        fecha: dateString,
+        tipo: 'Personal',
+        tipoClass: 'cumple-badge-personal',
+        nombreCompleto: peluquero.nombre || '',
+        telefono: String(peluquero.telefono || '').trim()
+    }));
+
+    return clientes.concat(personal);
+}
+
+function getCumpleMonthDate() {
+    if (state.currentCumpleMonth) {
+        return new Date(`${state.currentCumpleMonth}-01T00:00:00`);
+    }
+    const date = new Date();
+    date.setDate(1);
+    return date;
+}
+
+function setCurrentCumpleMonth(value) {
+    const date = typeof value === 'string'
+        ? new Date(`${value}-01T00:00:00`)
+        : new Date(value);
+    date.setDate(1);
+    state.currentCumpleMonth = toDateStringLocal(date).slice(0, 7);
+}
+
+function getCumpleMonthData() {
+    const monthDate = getCumpleMonthDate();
+    const year = monthDate.getFullYear();
+    const month = monthDate.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const byDate = new Map();
+    const entries = [];
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+        const date = new Date(year, month, day);
+        const dateString = toDateStringLocal(date);
+        const matches = getBirthdayEntriesForDate(dateString);
+        if (!matches.length) {
+            continue;
+        }
+        byDate.set(dateString, matches);
+        entries.push(...matches);
+    }
+
+    return {
+        year,
+        month,
+        byDate,
+        entries
+    };
+}
+
+function formatMonthYearLabel(year, month) {
+    return new Date(year, month, 1).toLocaleDateString('es-AR', {
+        month: 'long',
+        year: 'numeric'
+    });
+}
+
+function changeCumpleMonth(offset) {
+    const current = getCumpleMonthDate();
+    current.setMonth(current.getMonth() + offset);
+    setCurrentCumpleMonth(current);
+
+    const selectedMonth = state.selectedCumpleDate ? state.selectedCumpleDate.slice(0, 7) : '';
+    if (selectedMonth !== state.currentCumpleMonth) {
+        state.selectedCumpleDate = null;
+    }
+
+    renderCumpleanos();
+}
+
+function normalizeCumpleSelection(monthData) {
+    if (state.selectedCumpleDate && state.selectedCumpleDate.slice(0, 7) === state.currentCumpleMonth) {
+        return;
+    }
+
+    const todayValue = today();
+    if (monthData.byDate.has(todayValue) && todayValue.slice(0, 7) === state.currentCumpleMonth) {
+        state.selectedCumpleDate = todayValue;
+        return;
+    }
+
+    const firstBirthdayDate = Array.from(monthData.byDate.keys()).sort()[0] || null;
+    state.selectedCumpleDate = firstBirthdayDate;
+}
+
+function renderCumpleCalendar(monthData) {
+    const container = $('cumpleCalendar');
+    const label = $('cumpleMonthLabel');
+    if (!container) {
+        return;
+    }
+
+    const weekNames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
+    const firstOfMonth = new Date(monthData.year, monthData.month, 1);
+    const daysInMonth = new Date(monthData.year, monthData.month + 1, 0).getDate();
+    const startOffset = (firstOfMonth.getDay() + 6) % 7;
+    const cells = [];
+    const todayValue = today();
+
+    if (label) {
+        label.textContent = formatMonthYearLabel(monthData.year, monthData.month);
+    }
+
+    for (let i = 0; i < startOffset; i += 1) {
+        cells.push('<div class="cumple-day empty"></div>');
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+        const date = new Date(monthData.year, monthData.month, day);
+        const dateString = toDateStringLocal(date);
+        const matches = monthData.byDate.get(dateString) || [];
+        const classes = ['cumple-day'];
+
+        if (matches.length) {
+            classes.push('has-birthday');
+        }
+        if (state.selectedCumpleDate === dateString) {
+            classes.push('selected');
+        }
+        if (todayValue === dateString) {
+            classes.push('today');
+        }
+
+        const badge = matches.length ? `<span class="cumple-day-count">${matches.length}</span>` : '';
+        cells.push(`
+            <button class="${classes.join(' ')}" type="button" data-action="select-cumple-day" data-date="${dateString}" title="${matches.length ? `${matches.length} cumpleanos` : 'Sin cumpleanos'}">
+                <span class="cumple-day-number">${day}</span>
+                ${badge}
+            </button>
+        `);
+    }
+
+    container.innerHTML = `
+        <section class="cumple-month card">
+            <div class="cumple-weekdays">
+                ${weekNames.map((name) => `<span>${name}</span>`).join('')}
+            </div>
+            <div class="cumple-grid">
+                ${cells.join('')}
+            </div>
+        </section>
+    `;
+}
+
+function renderCumpleanos() {
+    const resumen = $('cumpleResumen');
+    const body = $('cumpleTableBody');
+    if (!resumen || !body) {
+        return;
+    }
+
+    const monthData = getCumpleMonthData();
+    normalizeCumpleSelection(monthData);
+    const cumpleaneros = monthData.entries;
+    const cumpleanerosClientes = cumpleaneros.filter((persona) => persona.tipo === 'Cliente');
+    const cumpleanerosPersonal = cumpleaneros.filter((persona) => persona.tipo === 'Personal');
+    const selectedDate = state.selectedCumpleDate;
+    const selectedEntries = selectedDate ? (monthData.byDate.get(selectedDate) || []) : [];
+
+    renderCumpleCalendar(monthData);
+
+    if (!cumpleaneros.length) {
+        resumen.textContent = `No hay cumpleanos cargados en ${formatMonthYearLabel(monthData.year, monthData.month)}.`;
+        body.innerHTML = '<tr><td colspan="6">No hay personas para este mes.</td></tr>';
+        return;
+    }
+
+    if (!selectedDate) {
+        resumen.textContent = `CumpleaÃ±os de ${formatMonthYearLabel(monthData.year, monthData.month)}: ${cumpleaneros.length} persona(s) - ${cumpleanerosClientes.length} cliente(s), ${cumpleanerosPersonal.length} personal. Selecciona un dÃ­a verde para ver el detalle.`;
+        body.innerHTML = '<tr><td colspan="6">Selecciona un dia con linea verde para ver los cumpleanos.</td></tr>';
+        return;
+    }
+
+    if (!selectedEntries.length) {
+        resumen.textContent = `No hay cumpleanos para el ${formatDateLabel(selectedDate)}.`;
+        body.innerHTML = '<tr><td colspan="6">No hay personas para la fecha seleccionada.</td></tr>';
+        return;
+    }
+
+    const clientesDelDia = selectedEntries.filter((persona) => persona.tipo === 'Cliente').length;
+    const personalDelDia = selectedEntries.filter((persona) => persona.tipo === 'Personal').length;
+    resumen.textContent = `CumpleaÃ±os del ${formatDateLabel(selectedDate)}: ${selectedEntries.length} persona(s) - ${clientesDelDia} cliente(s), ${personalDelDia} personal.`;
+    body.innerHTML = selectedEntries.map((persona) => {
+        const fullName = splitFullName(persona.nombreCompleto);
+        const telefono = String(persona.telefono || '').trim();
+        const waNumber = toWhatsAppNumber(telefono);
+        const waText = encodeURIComponent(buildCumpleMessage(persona.nombreCompleto, persona.fecha));
+        const waLink = waNumber ? `https://wa.me/${waNumber}?text=${waText}` : '';
+        const telefonoCell = waLink
+            ? `<a class="cumple-phone-link" href="${waLink}" target="_blank" rel="noopener noreferrer">${escapeHtml(telefono || '-')}</a>`
+            : escapeHtml(telefono || '-');
+        const waCell = waLink
+            ? `<a class="btn whatsapp-btn" href="${waLink}" target="_blank" rel="noopener noreferrer">WhatsApp</a>`
+            : '-';
+        const cortesCell = persona.tipo === 'Cliente' && persona.clienteId && persona.historialDisponible
+            ? `<button class="btn" type="button" data-action="open-cumple-historial" data-cliente-id="${escapeHtml(persona.clienteId)}" data-cliente-nombre="${escapeHtml(persona.nombreCompleto || '')}">Cantidad de atenciones</button>`
+            : '-';
+
+        return `
+            <tr>
+                <td>${escapeHtml(formatDateLabel(persona.fecha))}</td>
+                <td><span class="cumple-badge ${persona.tipoClass}">${escapeHtml(persona.tipo)}</span></td>
+                <td>${escapeHtml(`${fullName.nombre || ''} ${fullName.apellido || ''}`.trim() || persona.nombreCompleto || '-')}</td>
+                <td>${telefonoCell}</td>
+                <td>${waCell}</td>
+                <td>${cortesCell}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function selectCliente(clienteId) {
+    state.selectedClienteId = clienteId;
+    renderClientesList();
+    try {
+        await ensureClienteDetalle(clienteId);
+    } catch (error) {
+        showMessage(error.message, 'error');
+    }
+    renderClienteDetalle();
+}
+
+async function refreshSelectedClienteDetalle() {
+    if (!state.selectedClienteId) {
+        renderClienteDetalle();
+        return;
+    }
+
+    try {
+        await ensureClienteDetalle(state.selectedClienteId);
+    } catch (error) {
+        showMessage(error.message, 'error');
+    }
+
+    renderClienteDetalle();
+}
+
+function splitFullName(fullName) {
+    const text = String(fullName || '').trim();
+    if (!text) {
+        return { nombre: '', apellido: '' };
+    }
+
+    const parts = text.split(/\s+/);
+    return {
+        nombre: parts.shift() || '',
+        apellido: parts.join(' ')
+    };
+}
+
+function findClienteByNombre(nombre) {
+    const target = normalizeText(nombre);
+    if (!target) {
+        return null;
+    }
+    return state.clientes.find((cliente) => normalizeText(cliente.nombre) === target) || null;
+}
+
+function updateTurnoClienteInfo(cliente) {
+    const card = $('turnoClienteInfo');
+    const foto1 = $('turnoClienteInfoFoto1');
+    const foto2 = $('turnoClienteInfoFoto2');
+
+    if (!cliente) {
+        card.classList.add('hidden');
+        $('turnoClienteInfoNombre').textContent = '-';
+        $('turnoClienteInfoTelefono').textContent = '-';
+        $('turnoClienteInfoInstagram').textContent = '-';
+        foto1.src = '';
+        foto1.classList.add('hidden');
+        foto2.src = '';
+        foto2.classList.add('hidden');
+        return;
+    }
+
+    card.classList.remove('hidden');
+    $('turnoClienteInfoNombre').textContent = cliente.nombre || '-';
+    $('turnoClienteInfoTelefono').textContent = cliente.telefono || '-';
+    $('turnoClienteInfoInstagram').textContent = cliente.instagram || '-';
+
+    if (cliente.foto1) {
+        foto1.src = cliente.foto1;
+        foto1.classList.remove('hidden');
+    } else {
+        foto1.src = '';
+        foto1.classList.add('hidden');
+    }
+
+    if (cliente.foto2) {
+        foto2.src = cliente.foto2;
+        foto2.classList.remove('hidden');
+    } else {
+        foto2.src = '';
+        foto2.classList.add('hidden');
+    }
+}
+
+function syncTurnoClienteByInput() {
+    const clienteNombre = $('turnoCliente').value.trim();
+    if (!clienteNombre) {
+        state.selectedTurnoClienteId = null;
+        updateTurnoClienteInfo(null);
+        return null;
+    }
+
+    const cliente = findClienteByNombre(clienteNombre);
+    if (!cliente) {
+        state.selectedTurnoClienteId = null;
+        updateTurnoClienteInfo(null);
+        return null;
+    }
+
+    state.selectedTurnoClienteId = cliente._id;
+    $('turnoCliente').value = cliente.nombre;
+    updateTurnoClienteInfo(cliente);
+    if (!cliente.detalleCargado) {
+        ensureClienteDetalle(cliente._id)
+            .then((detalle) => {
+                if (detalle && state.selectedTurnoClienteId === detalle._id) {
+                    updateTurnoClienteInfo(detalle);
+                }
+            })
+            .catch((error) => {
+                console.warn('No se pudo cargar el detalle del cliente:', error.message);
+            });
+    }
+    return cliente;
+}
+
+function openNuevoClienteTurnoModal(nombreCompleto) {
+    const modal = $('nuevoClienteTurnoModal');
+    state.pendingTurnoClienteNombre = String(nombreCompleto || '').trim();
+    const parsed = splitFullName(nombreCompleto);
+    $('nuevoClienteTurnoNombre').value = parsed.nombre;
+    $('nuevoClienteTurnoApellido').value = parsed.apellido;
+    $('nuevoClienteTurnoTelefono').value = '';
+    $('nuevoClienteTurnoInstagram').value = '';
+    $('nuevoClienteTurnoFechaCumple').value = '';
+    modal.classList.remove('hidden');
+}
+
+function closeNuevoClienteTurnoModal() {
+    $('nuevoClienteTurnoModal').classList.add('hidden');
+    state.pendingTurnoClienteNombre = '';
+}
+
+function setClienteConfirmLock(locked) {
+    document.body.classList.toggle('modal-locked', locked);
+
+    Array.from(document.body.children).forEach((child) => {
+        if (child.id === 'clienteConfirmModal') {
+            return;
+        }
+
+        if (!('inert' in child)) {
+            return;
+        }
+
+        if (locked) {
+            child.dataset.clienteConfirmPrevInert = child.inert ? 'true' : 'false';
+            child.inert = true;
+            return;
+        }
+
+        if (child.dataset.clienteConfirmPrevInert === 'false') {
+            child.inert = false;
+        }
+
+        delete child.dataset.clienteConfirmPrevInert;
+    });
+}
+
+function openClienteConfirmModal(message) {
+    const modal = $('clienteConfirmModal');
+    const text = $('clienteConfirmText');
+    const okButton = $('clienteConfirmOk');
+
+    if (!modal || !text || !okButton) {
+        return Promise.resolve();
+    }
+
+    text.textContent = message;
+    setClienteConfirmLock(true);
+    modal.classList.remove('hidden');
+    window.setTimeout(() => {
+        okButton.focus();
+    }, 0);
+
+    return new Promise((resolve) => {
+        clienteConfirmResolver = resolve;
+    });
+}
+
+function closeClienteConfirmModal() {
+    const modal = $('clienteConfirmModal');
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.add('hidden');
+    setClienteConfirmLock(false);
+
+    const resolve = clienteConfirmResolver;
+    clienteConfirmResolver = null;
+    if (typeof resolve === 'function') {
+        resolve();
+    }
+}
+
+function setCumpleHistorialModalContent({ title, summary, html }) {
+    const titleEl = $('cumpleHistorialTitulo');
+    const summaryEl = $('cumpleHistorialResumen');
+    const bodyEl = $('cumpleHistorialBody');
+
+    if (titleEl) {
+        titleEl.textContent = title;
+    }
+
+    if (summaryEl) {
+        summaryEl.textContent = summary;
+    }
+
+    if (bodyEl) {
+        bodyEl.innerHTML = html;
+    }
+}
+
+function closeCumpleHistorialModal() {
+    const modal = $('cumpleHistorialModal');
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.add('hidden');
+    state.selectedCumpleHistorialClienteId = null;
+    state.cumpleHistorialRequestId += 1;
+}
+
+async function openCumpleHistorialModal(clienteId, clienteNombre) {
+    const modal = $('cumpleHistorialModal');
+    if (!modal || !clienteId) {
+        return;
+    }
+
+    state.selectedCumpleHistorialClienteId = clienteId;
+    state.cumpleHistorialRequestId += 1;
+    const requestId = state.cumpleHistorialRequestId;
+    const nombre = String(clienteNombre || '').trim() || 'Cliente';
+
+    setCumpleHistorialModalContent({
+        title: `Cantidad de atenciones - ${nombre}`,
+        summary: 'Cargando historial...',
+        html: '<p class="cliente-vacio">Cargando historial de atenciones...</p>'
+    });
+    modal.classList.remove('hidden');
+
+    try {
+        const historial = await apiFetch(`/api/clientes/${clienteId}/atenciones`, {
+            showLoading: false
+        });
+
+        if (
+            state.cumpleHistorialRequestId !== requestId
+            || state.selectedCumpleHistorialClienteId !== clienteId
+        ) {
+            return;
+        }
+
+        const detalleAtenciones = Array.isArray(historial.atenciones)
+            ? historial.atenciones
+            : [];
+        const fechas = Array.isArray(historial.fechas) ? historial.fechas : [];
+        const total = Number.isFinite(Number(historial.total))
+            ? Number(historial.total)
+            : (detalleAtenciones.length || fechas.length);
+        const rows = detalleAtenciones.length
+            ? detalleAtenciones.map((atencion, index) => `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${escapeHtml(formatDateLabel(atencion.fecha))}</td>
+                    <td>${escapeHtml(atencion.servicioNombre || '-')}</td>
+                    <td>${escapeHtml(atencion.peluqueroNombre || '-')}</td>
+                </tr>
+            `).join('')
+            : fechas.length
+                ? fechas.map((fecha, index) => `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${escapeHtml(formatDateLabel(fecha))}</td>
+                        <td>-</td>
+                        <td>-</td>
+                    </tr>
+                `).join('')
+                : '<tr><td colspan="4">No hay atenciones registradas para este cliente.</td></tr>';
+
+        setCumpleHistorialModalContent({
+            title: `Cantidad de atenciones - ${historial.nombre || nombre}`,
+            summary: `Total de atenciones registradas: ${total}.`,
+            html: `
+                <div class="table-wrap cumple-historial-table-wrap">
+                    <table class="cumple-historial-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Fecha</th>
+                                <th>Servicio</th>
+                                <th>Peluquero</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            `
+        });
+    } catch (error) {
+        if (
+            state.cumpleHistorialRequestId !== requestId
+            || state.selectedCumpleHistorialClienteId !== clienteId
+        ) {
+            return;
+        }
+
+        setCumpleHistorialModalContent({
+            title: `Cantidad de atenciones - ${nombre}`,
+            summary: 'No se pudo cargar el historial.',
+            html: `<p class="cliente-vacio">${escapeHtml(error.message || 'No se pudo cargar el historial.')}</p>`
+        });
+        showMessage(error.message, 'error');
+    }
+}
+
+function maybeOpenNuevoClienteTurnoModal() {
+    const clienteNombre = $('turnoCliente').value.trim();
+    if (!clienteNombre) {
+        return;
+    }
+
+    if (findClienteByNombre(clienteNombre)) {
+        return;
+    }
+
+    if (!$('nuevoClienteTurnoModal').classList.contains('hidden')) {
+        return;
+    }
+
+    if (state.pendingTurnoClienteNombre === clienteNombre) {
+        return;
+    }
+
+    openNuevoClienteTurnoModal(clienteNombre);
+    showMessage('Cliente no encontrado. Completa el popup para crearlo.', 'error');
+}
+
+function openEditarUsuarioModal(user) {
+    $('editarUsuarioId').value = user._id || user.id;
+    $('editarUsuarioNombre').value = user.username || '';
+    $('editarUsuarioRol').value = user.role || 'user';
+    $('editarUsuarioPeluquero').value = user.barberId || '';
+    $('editarUsuarioPassword').value = '';
+    $('editarUsuarioModal').classList.remove('hidden');
+}
+
+function closeEditarUsuarioModal() {
+    $('editarUsuarioModal').classList.add('hidden');
+}
+
+function renderCajaTable() {
+    const body = $('cajaTableBody');
+    if (!body) {
+        return;
+    }
+
+    const columnCount = isAdminRole() ? 9 : 8;
+
+    if (!state.atenciones.length) {
+        body.innerHTML = `<tr><td colspan="${columnCount}">No hay ventas para la fecha seleccionada.</td></tr>`;
+        return;
+    }
+
+    body.innerHTML = state.atenciones.map((a) => `
+        <tr>
+            <td>${a.fecha}</td>
+            <td>${escapeHtml(getSaleTypeLabel(a.tipoVenta))}</td>
+            <td>${escapeHtml(getAttendanceDetailLabel(a))}</td>
+            <td>${escapeHtml(a.peluquero?.nombre || '-')}</td>
+            <td>${escapeHtml(a.cliente || '-')}</td>
+            <td>${escapeHtml(a.formaPago || '-')}</td>
+            <td>$${Number(a.montoCobrado).toFixed(2)}</td>
+            <td>${escapeHtml(getAttendanceCommissionLabel(a))}</td>
+            <td class="admin-only">
+                ${canDeleteAttendance(a)
+        ? `<button class="btn danger" type="button" data-action="delete-atencion" data-id="${escapeHtml(a._id)}">Eliminar</button>`
+        : ''}
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderUsuariosTable() {
+    const body = $('usuariosTableBody');
+
+    body.innerHTML = state.usuarios.map((u) => `
+        <tr>
+            <td>${escapeHtml(u.username)}</td>
+            <td><code>${escapeHtml(u.passwordVisible || '(sin registro)')}</code></td>
+            <td>${escapeHtml(u.role)}</td>
+            <td>${escapeHtml(u.barberNombre || '-')}</td>
+            <td>${new Date(u.createdAt).toLocaleDateString('es-AR')}</td>
+            <td><button class="btn" type="button" data-action="edit-user" data-id="${u._id || u.id}">Editar</button></td>
+        </tr>
+    `).join('');
+}
+
+function renderReportes(atenciones = []) {
+    const container = $('reportesContainer');
+    const body = $('reporteDiaTableBody');
+
+    if (!container || !body) {
+        return;
+    }
+
+    const totalCobrado = atenciones.reduce((acc, item) => acc + Number(item.montoCobrado || 0), 0);
+    const totalComision = atenciones.reduce((acc, item) => acc + Number(item.comisionGanada || 0), 0);
+    const netoSalon = totalCobrado - totalComision;
+
+    const groupedByBarber = new Map();
+    atenciones.forEach((item) => {
+        const barberName = item.peluquero?.nombre || 'Sin peluquero';
+        if (!groupedByBarber.has(barberName)) {
+            groupedByBarber.set(barberName, { total: 0, comision: 0 });
+        }
+        const target = groupedByBarber.get(barberName);
+        target.total += Number(item.montoCobrado || 0);
+        target.comision += Number(item.comisionGanada || 0);
+    });
+
+    const resumenPeluqueros = Array.from(groupedByBarber.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([nombre, values]) => (
+            `<li><strong>${escapeHtml(nombre)}:</strong> $${values.total.toFixed(2)} (Comision $${values.comision.toFixed(2)})</li>`
+        ))
+        .join('');
+
+    container.innerHTML = `
+        <article class="report-card">
+            <div class="report-header">
+                <strong>Totales del dia</strong>
+                <span>Total cobrado: $${totalCobrado.toFixed(2)} | Total comision: $${totalComision.toFixed(2)} | Neto salon: $${netoSalon.toFixed(2)}</span>
+            </div>
+            ${resumenPeluqueros ? `<ul class="form-grid">${resumenPeluqueros}</ul>` : '<p>No hay ventas para la fecha seleccionada.</p>'}
+        </article>
+    `;
+
+    if (!atenciones.length) {
+        body.innerHTML = '<tr><td colspan="6">No hay ventas para el filtro seleccionado.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = atenciones.map((item) => `
+        <tr>
+            <td>${escapeHtml(item.peluquero?.nombre || '-')}</td>
+            <td>${escapeHtml(getSaleTypeLabel(item.tipoVenta))}</td>
+            <td>${escapeHtml(getAttendanceDetailLabel(item))}</td>
+            <td>${escapeHtml(item.cliente || '-')}</td>
+            <td>$${Number(item.montoCobrado || 0).toFixed(2)}</td>
+            <td>${escapeHtml(getAttendanceCommissionLabel(item))}</td>
+        </tr>
+    `).join('');
+}
+
+function buildSeguimientoMessage(clienteNombre, diasDesdeUltimoCorte) {
+    const nombre = String(clienteNombre || '').trim().split(/\s+/).filter(Boolean)[0] || '';
+
+    return `Hola ${nombre} 👋
+
+En Salón Milano tenemos un descuento especial para tu próximo corte.
+
+Si querés aprovecharlo, respondé este mensaje y te ayudamos a reservar el turno.`;
+}
+
+function parseIsoDateOnlyLocal(dateString) {
+    const text = String(dateString || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        return null;
+    }
+
+    const [year, month, day] = text.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+
+    if (
+        Number.isNaN(date.getTime())
+        || date.getFullYear() !== year
+        || date.getMonth() !== month - 1
+        || date.getDate() !== day
+    ) {
+        return null;
+    }
+
+    return date;
+}
+
+function getDiasDesdeUltimoCorteLocal(ultimaAtencion) {
+    const ultimaFecha = parseIsoDateOnlyLocal(ultimaAtencion);
+    if (!ultimaFecha) {
+        return null;
+    }
+
+    const hoy = parseIsoDateOnlyLocal(today());
+    if (!hoy) {
+        return null;
+    }
+
+    return Math.max(0, Math.floor((hoy.getTime() - ultimaFecha.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+function getConsultaColorData(diasDesdeUltimoCorte) {
+    if (diasDesdeUltimoCorte <= 7) {
+        return { color: 'verde', estado: 'Ultima semana', prioridad: 3 };
+    }
+
+    if (diasDesdeUltimoCorte <= 29) {
+        return { color: 'amarillo', estado: 'Entre 8 y 29 dias', prioridad: 2 };
+    }
+
+    return { color: 'rojo', estado: '1 mes o mas', prioridad: 1 };
+}
+
+function buildConsultaSeguimientoDesdeClientes(clientes) {
+    const rows = (clientes || [])
+        .map((cliente) => {
+            const diasDesdeUltimoCorte = getDiasDesdeUltimoCorteLocal(cliente.ultimaAtencion);
+            if (diasDesdeUltimoCorte === null) {
+                return null;
+            }
+
+            const colorData = getConsultaColorData(diasDesdeUltimoCorte);
+
+            return {
+                id: cliente._id,
+                nombre: String(cliente.nombre || '').trim(),
+                telefono: String(cliente.telefono || '').trim(),
+                ultimaAtencion: String(cliente.ultimaAtencion || '').trim(),
+                diasDesdeUltimoCorte,
+                color: colorData.color,
+                estado: colorData.estado,
+                prioridad: colorData.prioridad
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            if (a.prioridad !== b.prioridad) {
+                return a.prioridad - b.prioridad;
+            }
+
+            if (a.diasDesdeUltimoCorte !== b.diasDesdeUltimoCorte) {
+                return b.diasDesdeUltimoCorte - a.diasDesdeUltimoCorte;
+            }
+
+            return a.nombre.localeCompare(b.nombre);
+        });
+
+    const totals = rows.reduce((acc, row) => {
+        acc.total += 1;
+        acc[row.color] += 1;
+        return acc;
+    }, {
+        total: 0,
+        verde: 0,
+        amarillo: 0,
+        rojo: 0
+    });
+
+    return { totals, rows };
+}
+
+function renderConsultaSeguimiento() {
+    const resumen = $('consultasSeguimientoResumen');
+    const body = $('consultasSeguimientoTableBody');
+    const tableWrap = $('consultasSeguimientoTableWrap');
+
+    if (!resumen || !body || !tableWrap) {
+        return;
+    }
+
+    if (!state.consultasSeguimiento) {
+        resumen.innerHTML = '';
+        resumen.classList.add('hidden');
+        body.innerHTML = '<tr><td colspan="6">Sin datos.</td></tr>';
+        tableWrap.classList.add('hidden');
+        return;
+    }
+
+    const data = state.consultasSeguimiento;
+    resumen.classList.remove('hidden');
+    tableWrap.classList.remove('hidden');
+    const filtroActivo = state.consultasSeguimientoFiltro || 'todos';
+
+    resumen.innerHTML = `
+        <button type="button" class="consulta-card consulta-card-verde ${filtroActivo === 'verde' ? 'consulta-card-active' : ''}" data-action="filtro-consulta-color" data-color="verde">
+            <span>Verde</span>
+            <strong>${Number(data.totals?.verde || 0)}</strong>
+            <small>Clientes atendidos en la ultima semana</small>
+        </button>
+        <button type="button" class="consulta-card consulta-card-amarillo ${filtroActivo === 'amarillo' ? 'consulta-card-active' : ''}" data-action="filtro-consulta-color" data-color="amarillo">
+            <span>Amarillo</span>
+            <strong>${Number(data.totals?.amarillo || 0)}</strong>
+            <small>Clientes con 8 a 29 dias desde el ultimo corte</small>
+        </button>
+        <button type="button" class="consulta-card consulta-card-rojo ${filtroActivo === 'rojo' ? 'consulta-card-active' : ''}" data-action="filtro-consulta-color" data-color="rojo">
+            <span>Rojo</span>
+            <strong>${Number(data.totals?.rojo || 0)}</strong>
+            <small>Clientes con 1 mes o mas desde el ultimo corte</small>
+        </button>
+        <button type="button" class="consulta-card ${filtroActivo === 'todos' ? 'consulta-card-active' : ''}" data-action="filtro-consulta-color" data-color="todos">
+            <span>Todos</span>
+            <strong>${Number(data.totals?.total || 0)}</strong>
+            <small>Ver todos los colores en la tabla</small>
+        </button>
+    `;
+
+    const rows = filtroActivo === 'todos'
+        ? data.rows
+        : data.rows.filter((row) => row.color === filtroActivo);
+
+    if (!rows?.length) {
+        body.innerHTML = '<tr><td colspan="6">No hay clientes con ultima atencion registrada para esta consulta.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = rows.map((row) => {
+        const waNumber = toWhatsAppNumber(row.telefono);
+        const waText = encodeURIComponent(buildSeguimientoMessage(row.nombre, row.diasDesdeUltimoCorte));
+        const waLink = waNumber ? `https://wa.me/${waNumber}?text=${waText}` : '';
+        const telefonoCell = waLink
+            ? `<a class="cumple-phone-link" href="${waLink}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.telefono || '-')}</a>`
+            : escapeHtml(row.telefono || '-');
+        const waCell = waLink
+            ? `<a class="btn whatsapp-btn" href="${waLink}" target="_blank" rel="noopener noreferrer">WhatsApp</a>`
+            : '-';
+
+        return `
+            <tr class="consulta-row consulta-row-${escapeHtml(row.color)}">
+                <td>${escapeHtml(row.nombre || '-')}</td>
+                <td>${telefonoCell}</td>
+                <td>${escapeHtml(formatDateLabel(row.ultimaAtencion))}</td>
+                <td>${Number(row.diasDesdeUltimoCorte || 0)}</td>
+                <td><span class="consulta-estado consulta-estado-${escapeHtml(row.color)}">${escapeHtml(row.estado || '-')}</span></td>
+                <td>${waCell}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function resetPeluqueroForm() {
+    $('peluqueroId').value = '';
+    $('peluqueroNombre').value = '';
+    $('peluqueroTelefono').value = '';
+    $('peluqueroFechaCumple').value = '';
+    $('peluqueroComision').value = '40';
+    $('peluqueroInicio').value = '10:00';
+    $('peluqueroFin').value = '22:00';
+    $('peluqueroActivo').checked = true;
+    document.querySelectorAll('.day-check').forEach((check) => {
+        check.checked = Number(check.value) >= 1 && Number(check.value) <= 6;
+    });
+}
+
+function resetServicioForm() {
+    $('servicioTipoTrabajo').value = DEFAULT_SERVICE_WORK_TYPE;
+    $('servicioNombre').value = '';
+    $('servicioPrecio').value = '';
+    $('servicioDuracion').value = '30';
+}
+
+function readServicioPayload(fieldPrefix = 'servicio') {
+    return {
+        tipoTrabajo: normalizeServiceWorkType($(`${fieldPrefix}TipoTrabajo`).value),
+        nombre: $(`${fieldPrefix}Nombre`).value.trim(),
+        precio: Number($(`${fieldPrefix}Precio`).value),
+        duracionMinutos: Number($(`${fieldPrefix}Duracion`).value)
+    };
+}
+
+function resetProductoForm() {
+    $('productoNombre').value = '';
+    $('productoPrecio').value = '';
+    $('productoComisionMonto').value = '';
+}
+
+function readProductoPayload(fieldPrefix = 'producto') {
+    return {
+        nombre: $(`${fieldPrefix}Nombre`).value.trim(),
+        precio: Number($(`${fieldPrefix}Precio`).value),
+        comisionMonto: Number($(`${fieldPrefix}ComisionMonto`).value)
+    };
+}
+
+function readPeluqueroAgenda() {
+    const inicio = $('peluqueroInicio').value;
+    const fin = $('peluqueroFin').value;
+
+    if (!inicio || !fin) {
+        throw new Error('Debes definir hora de inicio y fin');
+    }
+
+    const dias = Array.from(document.querySelectorAll('.day-check:checked')).map((c) => Number(c.value));
+
+    if (!dias.length) {
+        throw new Error('Selecciona al menos un dia de trabajo');
+    }
+
+    return dias.map((dayOfWeek) => ({ dayOfWeek, start: inicio, end: fin }));
+}
+
+function fillPeluqueroForm(barberId) {
+    const barber = state.peluqueros.find((p) => p._id === barberId);
+
+    if (!barber) {
+        return;
+    }
+
+    $('peluqueroId').value = barber._id;
+    $('peluqueroNombre').value = barber.nombre;
+    $('peluqueroTelefono').value = barber.telefono || '';
+    $('peluqueroFechaCumple').value = formatDateLabel(barber.fechaCumpleanos);
+    $('peluqueroComision').value = barber.porcentajeComision;
+    $('peluqueroActivo').checked = barber.activo;
+
+    const baseSlot = barber.agenda[0] || { start: '10:00', end: '22:00' };
+    $('peluqueroInicio').value = baseSlot.start;
+    $('peluqueroFin').value = baseSlot.end;
+
+    const activeDays = new Set(barber.agenda.map((slot) => slot.dayOfWeek));
+    document.querySelectorAll('.day-check').forEach((check) => {
+        check.checked = activeDays.has(Number(check.value));
+    });
+}
+
+function openEditarServicioModal(servicioId) {
+    const servicio = state.serviciosCaja.find((item) => item._id === servicioId);
+    if (!servicio) {
+        showMessage('Servicio no encontrado', 'error');
+        return;
+    }
+
+    $('editarServicioId').value = servicio._id;
+    $('editarServicioTipoTrabajo').value = normalizeServiceWorkType(servicio.tipoTrabajo);
+    $('editarServicioNombre').value = servicio.nombre;
+    $('editarServicioPrecio').value = Number(servicio.precio).toFixed(2);
+    $('editarServicioDuracion').value = Number(servicio.duracionMinutos || 30);
+    $('editarServicioModal').classList.remove('hidden');
+}
+
+function closeEditarServicioModal() {
+    $('editarServicioModal').classList.add('hidden');
+    $('editarServicioForm').reset();
+    $('editarServicioTipoTrabajo').value = DEFAULT_SERVICE_WORK_TYPE;
+    $('editarServicioId').value = '';
+}
+
+function openEditarProductoModal(productoId) {
+    const producto = state.productos.find((item) => item._id === productoId);
+    if (!producto) {
+        showMessage('Producto no encontrado', 'error');
+        return;
+    }
+
+    $('editarProductoId').value = producto._id;
+    $('editarProductoNombre').value = producto.nombre;
+    $('editarProductoPrecio').value = Number(producto.precio).toFixed(2);
+    $('editarProductoComisionMonto').value = Number(producto.comisionMonto).toFixed(2);
+    $('editarProductoModal').classList.remove('hidden');
+}
+
+function closeEditarProductoModal() {
+    $('editarProductoModal').classList.add('hidden');
+    $('editarProductoForm').reset();
+    $('editarProductoId').value = '';
+}
+
+function getTurnoPhotoRefs(slot) {
+    if (slot === '1') {
+        return {
+            input: $('turnoFoto1'),
+            preview: $('turnoFoto1Preview'),
+            status: $('turnoFoto1Estado')
+        };
+    }
+
+    return {
+        input: $('turnoFoto2'),
+        preview: $('turnoFoto2Preview'),
+        status: $('turnoFoto2Estado')
+    };
+}
+
+function getClientePhotoRefs(slot) {
+    if (slot === '1') {
+        return {
+            input: $('clienteFoto1Input'),
+            preview: $('clienteFoto1Preview'),
+            status: $('clienteFoto1Estado')
+        };
+    }
+
+    return {
+        input: $('clienteFoto2Input'),
+        preview: $('clienteFoto2Preview'),
+        status: $('clienteFoto2Estado')
+    };
+}
+
+function setTurnoPhotoStatus(slot, message, isError = false) {
+    const { status } = getTurnoPhotoRefs(slot);
+    status.textContent = message || '';
+    status.style.color = isError ? '#b91c1c' : '#475569';
+}
+
+function setClientePhotoStatus(slot, message, isError = false) {
+    const { status } = getClientePhotoRefs(slot);
+    status.textContent = message || '';
+    status.style.color = isError ? '#b91c1c' : '#475569';
+}
+
+function estimarBytesDesdeDataURL(dataUrl) {
+    const base64 = dataUrl.split(',')[1] || '';
+    return Math.ceil((base64.length * 3) / 4);
+}
+
+function leerArchivoComoDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+        reader.readAsDataURL(file);
+    });
+}
+
+function cargarImagen(file) {
+    return new Promise((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+
+        img.onload = function() {
+            URL.revokeObjectURL(objectUrl);
+            resolve(img);
+        };
+
+        img.onerror = function() {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error('No se pudo procesar la imagen'));
+        };
+
+        img.src = objectUrl;
+    });
+}
+
+async function convertirImagenCanvasAJpeg(file) {
+    const img = await cargarImagen(file);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+        throw new Error('No se pudo inicializar la compresion');
+    }
+
+    let width = img.naturalWidth || img.width;
+    let height = img.naturalHeight || img.height;
+
+    if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+        const scale = Math.min(MAX_IMAGE_DIMENSION / width, MAX_IMAGE_DIMENSION / height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+    }
+
+    let quality = 0.85;
+    let dataUrl = '';
+
+    while (true) {
+        canvas.width = width;
+        canvas.height = height;
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const bytes = estimarBytesDesdeDataURL(dataUrl);
+
+        if (bytes <= TARGET_IMAGE_BYTES) {
+            break;
+        }
+
+        if (quality > MIN_JPEG_QUALITY) {
+            quality = Math.max(MIN_JPEG_QUALITY, quality - 0.08);
+            continue;
+        }
+
+        if (width <= MIN_IMAGE_DIMENSION || height <= MIN_IMAGE_DIMENSION) {
+            break;
+        }
+
+        width = Math.round(width * 0.85);
+        height = Math.round(height * 0.85);
+    }
+
+    return dataUrl;
+}
+
+function canPreviewDataUrl(dataUrl) {
+    const mime = String(dataUrl || '').slice(0, 80).toLowerCase();
+    return !mime.includes('image/heic') && !mime.includes('image/heif');
+}
+
+async function convertirImagenABase64(file) {
+    try {
+        const converted = await convertirImagenCanvasAJpeg(file);
+        return {
+            dataUrl: converted,
+            previewable: true,
+            source: 'canvas'
+        };
+    } catch (error) {
+        const dataUrl = await leerArchivoComoDataURL(file);
+        const bytes = estimarBytesDesdeDataURL(dataUrl);
+
+        if (bytes > MAX_FALLBACK_FILE_BYTES) {
+            throw new Error('Imagen demasiado pesada para este formato. Usa una imagen mas liviana.');
+        }
+
+        return {
+            dataUrl,
+            previewable: canPreviewDataUrl(dataUrl),
+            source: 'fallback'
+        };
+    }
+}
+
+async function processTurnoPhoto(slot) {
+    const refs = getTurnoPhotoRefs(slot);
+    const file = refs.input.files && refs.input.files[0] ? refs.input.files[0] : null;
+
+    if (!file) {
+        return;
+    }
+
+    try {
+        setTurnoPhotoStatus(slot, 'Procesando imagen...');
+        const conversion = await convertirImagenABase64(file);
+        refs.input.dataset.base64 = conversion.dataUrl;
+
+        if (conversion.previewable) {
+            refs.preview.src = conversion.dataUrl;
+            refs.preview.classList.remove('hidden');
+        } else {
+            refs.preview.src = '';
+            refs.preview.classList.add('hidden');
+        }
+
+        const kb = Math.round(estimarBytesDesdeDataURL(conversion.dataUrl) / 1024);
+        const suffix = conversion.previewable ? '' : ' - sin vista previa';
+        setTurnoPhotoStatus(slot, `Lista (${kb} KB)${suffix}`);
+    } catch (error) {
+        refs.input.value = '';
+        delete refs.input.dataset.base64;
+        refs.preview.src = '';
+        refs.preview.classList.add('hidden');
+        setTurnoPhotoStatus(slot, error.message, true);
+        throw error;
+    }
+}
+
+async function processClientePhoto(slot) {
+    const refs = getClientePhotoRefs(slot);
+    const file = refs.input.files && refs.input.files[0] ? refs.input.files[0] : null;
+
+    if (!file) {
+        return;
+    }
+
+    try {
+        setClientePhotoStatus(slot, 'Procesando imagen...');
+        const conversion = await convertirImagenABase64(file);
+        refs.input.dataset.base64 = conversion.dataUrl;
+
+        if (conversion.previewable) {
+            refs.preview.src = conversion.dataUrl;
+            refs.preview.classList.remove('hidden');
+        } else {
+            refs.preview.src = '';
+            refs.preview.classList.add('hidden');
+        }
+
+        const kb = Math.round(estimarBytesDesdeDataURL(conversion.dataUrl) / 1024);
+        const suffix = conversion.previewable ? '' : ' - sin vista previa';
+        setClientePhotoStatus(slot, `Lista (${kb} KB)${suffix}`);
+    } catch (error) {
+        refs.input.value = '';
+        delete refs.input.dataset.base64;
+        refs.preview.src = '';
+        refs.preview.classList.add('hidden');
+        setClientePhotoStatus(slot, error.message, true);
+        throw error;
+    }
+}
+
+async function getProcessedTurnoPhoto(slot) {
+    const refs = getTurnoPhotoRefs(slot);
+
+    if (refs.input.dataset.base64) {
+        return refs.input.dataset.base64;
+    }
+
+    if (refs.input.files && refs.input.files[0]) {
+        await processTurnoPhoto(slot);
+        return refs.input.dataset.base64 || '';
+    }
+
+    return '';
+}
+
+async function getProcessedClientePhoto(slot) {
+    const refs = getClientePhotoRefs(slot);
+
+    if (refs.input.dataset.base64) {
+        return refs.input.dataset.base64;
+    }
+
+    if (refs.input.files && refs.input.files[0]) {
+        await processClientePhoto(slot);
+        return refs.input.dataset.base64 || '';
+    }
+
+    return '';
+}
+
+function setClienteFormPhoto(slot, dataUrl) {
+    const refs = getClientePhotoRefs(slot);
+    refs.input.value = '';
+    delete refs.input.dataset.base64;
+
+    if (dataUrl) {
+        refs.preview.src = dataUrl;
+        refs.preview.classList.remove('hidden');
+        setClientePhotoStatus(slot, 'Foto actual cargada');
+        return;
+    }
+
+    refs.preview.src = '';
+    refs.preview.classList.add('hidden');
+    setClientePhotoStatus(slot, '');
+}
+
+function clearTurnoPhotos() {
+    ['1', '2'].forEach((slot) => {
+        const refs = getTurnoPhotoRefs(slot);
+        refs.input.value = '';
+        delete refs.input.dataset.base64;
+        refs.preview.src = '';
+        refs.preview.classList.add('hidden');
+        setTurnoPhotoStatus(slot, '');
+    });
+}
+
+function clearClientePhotos() {
+    ['1', '2'].forEach((slot) => {
+        const refs = getClientePhotoRefs(slot);
+        refs.input.value = '';
+        delete refs.input.dataset.base64;
+        refs.preview.src = '';
+        refs.preview.classList.add('hidden');
+        setClientePhotoStatus(slot, '');
+    });
+}
+
+function openTurnoPhotoPicker(slot, source) {
+    const refs = getTurnoPhotoRefs(slot);
+    refs.input.value = '';
+    delete refs.input.dataset.base64;
+
+    if (source === 'camera') {
+        refs.input.setAttribute('capture', 'environment');
+        setTurnoPhotoStatus(slot, 'Abriendo camara...');
+    } else {
+        refs.input.removeAttribute('capture');
+        setTurnoPhotoStatus(slot, 'Selecciona una imagen de la galeria');
+    }
+
+    refs.input.click();
+}
+
+window.openTurnoPhotoPicker = openTurnoPhotoPicker;
+
+function openClientePhotoPicker(slot, source) {
+    const refs = getClientePhotoRefs(slot);
+    refs.input.value = '';
+    delete refs.input.dataset.base64;
+
+    if (source === 'camera') {
+        refs.input.setAttribute('capture', 'environment');
+        setClientePhotoStatus(slot, 'Abriendo camara...');
+    } else {
+        refs.input.removeAttribute('capture');
+        setClientePhotoStatus(slot, 'Selecciona una imagen de la galeria');
+    }
+
+    refs.input.click();
+}
+
+window.openClientePhotoPicker = openClientePhotoPicker;
+
+function openFotosModal(fotoSrc1, fotoSrc2) {
+    const modal = $('turnoFotoModal');
+    const foto1 = $('turnoModalFoto1');
+    const foto2 = $('turnoModalFoto2');
+
+    if (fotoSrc1) {
+        foto1.src = fotoSrc1;
+        foto1.classList.remove('hidden');
+    } else {
+        foto1.src = '';
+        foto1.classList.add('hidden');
+    }
+
+    if (fotoSrc2) {
+        foto2.src = fotoSrc2;
+        foto2.classList.remove('hidden');
+    } else {
+        foto2.src = '';
+        foto2.classList.add('hidden');
+    }
+
+    modal.classList.remove('hidden');
+}
+
+function closeTurnoFotoModal() {
+    $('turnoFotoModal').classList.add('hidden');
+}
+
+function openTurnoFotoModal(turnoId) {
+    const turno = state.turnos.find((item) => item._id === turnoId);
+    if (!turno) {
+        return;
+    }
+    openFotosModal(turno.foto1, turno.foto2);
+}
+
+async function registrarTurno(payload) {
+    await apiFetch('/api/turnos', {
+        method: 'POST',
+        body: payload
+    });
+
+    $('turnoCliente').value = '';
+    state.selectedTurnoClienteId = null;
+    updateTurnoClienteInfo(null);
+    clearTurnoPhotos();
+
+    await Promise.all([
+        cargarTurnos(),
+        cargarTurnosDelMomento({ silent: true }),
+        cargarClientes(),
+        !isAgendaRole() ? cargarDashboard() : Promise.resolve()
+    ]);
+}
+
+async function cargarTurnosDelMomento(options = {}) {
+    const { silent = false } = options;
+
+    if (!state.token) {
+        state.turnosDelMomento = [];
+        renderTurnosAhoraPanel();
+        return;
+    }
+
+    const fechaActual = getLocalDateString();
+    const turnosHoy = await apiFetch(`/api/turnos?fecha=${fechaActual}`, { showLoading: false });
+    const turnosEnHorario = turnosHoy.filter((turno) => isTurnoDelMomento(turno, fechaActual, getCurrentMinutesLocal()));
+
+    state.turnosDelMomento = turnosEnHorario;
+    renderTurnosAhoraPanel();
+
+    if (!silent) {
+        avisarTurnosDelMomento(turnosEnHorario);
+    }
+
+    if ($('turnosFiltroFecha')?.value === fechaActual) {
+        state.turnos = turnosHoy;
+        renderTurnosTable();
+    }
+}
+
+function stopTurnosAhoraWatcher() {
+    if (turnosAhoraIntervalId) {
+        clearInterval(turnosAhoraIntervalId);
+        turnosAhoraIntervalId = null;
+    }
+}
+
+function startTurnosAhoraWatcher() {
+    stopTurnosAhoraWatcher();
+
+    if (!state.token) {
+        state.turnosDelMomento = [];
+        renderTurnosAhoraPanel();
+        return;
+    }
+
+    cargarTurnosDelMomento().catch((error) => {
+        console.warn('No se pudieron cargar los turnos del momento:', error.message);
+    });
+
+    turnosAhoraIntervalId = window.setInterval(() => {
+        cargarTurnosDelMomento().catch((error) => {
+            console.warn('No se pudieron refrescar los turnos del momento:', error.message);
+        });
+    }, 30000);
+}
+
+async function actualizarEstadoTurno(turnoId, estado) {
+    const actualizado = await apiFetch(`/api/turnos/${turnoId}/estado`, {
+        method: 'PATCH',
+        body: { estado }
+    });
+
+    syncTurnoActualizado(actualizado);
+    await cargarTurnosDelMomento({ silent: true });
+}
+
+async function cargarConfig() {
+    try {
+        const config = await apiFetch('/api/config', { auth: false });
+        if (config?.servicios) {
+            state.servicios = config.servicios;
+        }
+        applyTurnoDateTimeConstraints();
+    } catch (error) {
+        console.warn('No se pudo cargar config:', error.message);
+    }
+}
+
+async function cargarDashboard() {
+    const fecha = $('dashboardDate').value;
+
+    try {
+        const data = await apiFetch(`/api/dashboard?fecha=${fecha}`, { showLoading: false });
+        $('kpiTurnos').textContent = data.totalTurnos ?? 0;
+        $('kpiAtenciones').textContent = data.totalAtenciones ?? 0;
+        $('kpiPeluqueros').textContent = data.peluquerosActivos ?? 0;
+    } catch (error) {
+        $('kpiTurnos').textContent = '0';
+        $('kpiAtenciones').textContent = '0';
+        $('kpiPeluqueros').textContent = '0';
+        console.warn('No se pudo cargar dashboard:', error.message);
+    }
+}
+
+async function cargarPeluqueros() {
+    state.peluqueros = await apiFetch('/api/peluqueros');
+    completarSelectPeluqueros();
+    renderPeluquerosTable();
+    renderCumpleanos();
+
+    if (state.loadedTabs.cumpleanos) {
+        cargarCumpleanos().catch((error) => {
+            console.warn('No se pudo refrescar cumpleanos tras cargar peluqueros:', error.message);
+        });
+    }
+}
+
+async function cargarServiciosCaja() {
+    const servicios = await apiFetch('/api/servicios');
+    state.serviciosCaja = Array.isArray(servicios)
+        ? servicios.map((servicio) => ({
+            ...servicio,
+            tipoTrabajo: normalizeServiceWorkType(servicio.tipoTrabajo)
+        }))
+        : [];
+    renderCajaServiciosSelect();
+    renderTurnoServiciosSelect();
+    renderServiciosTable();
+    updateCajaVentaFields();
+}
+
+async function cargarProductos() {
+    const productos = await apiFetch('/api/productos');
+    state.productos = Array.isArray(productos) ? productos : [];
+    renderCajaProductosSelect();
+    renderProductosTable();
+    updateCajaVentaFields();
+}
+
+async function cargarClientes() {
+    state.clientes = await apiFetch('/api/clientes');
+    completarClientesDatalist();
+    renderClientesList();
+    renderCumpleanos();
+
+    if (!state.selectedClienteId && state.clientes.length > 0) {
+        state.selectedClienteId = state.clientes[0]._id;
+    } else if (state.selectedClienteId && !state.clientes.some((c) => c._id === state.selectedClienteId)) {
+        state.selectedClienteId = state.clientes.length ? state.clientes[0]._id : null;
+    }
+
+    renderClienteDetalle();
+
+    if (state.selectedTurnoClienteId) {
+        const clienteTurno = state.clientes.find((item) => item._id === state.selectedTurnoClienteId) || null;
+        updateTurnoClienteInfo(clienteTurno);
+    }
+
+    if (state.loadedTabs.cumpleanos) {
+        cargarCumpleanos().catch((error) => {
+            console.warn('No se pudo refrescar cumpleanos tras cargar clientes:', error.message);
+        });
+    }
+}
+
+async function cargarCumpleanos() {
+    const data = await apiFetch('/api/dashboard/cumpleanos');
+    state.cumpleClientes = Array.isArray(data?.clientes) ? data.clientes : [];
+    state.cumplePeluqueros = Array.isArray(data?.peluqueros) ? data.peluqueros : [];
+    renderCumpleanos();
+}
+
+async function cargarTurnos() {
+    const fecha = $('turnosFiltroFecha').value;
+    state.turnos = await apiFetch(`/api/turnos?fecha=${fecha}`);
+    renderTurnosTable();
+}
+
+async function cargarAtenciones() {
+    const fecha = $('cajaFecha').value;
+    if (!fecha) {
+        state.atenciones = [];
+        renderCajaTable();
+        return;
+    }
+    state.atenciones = await apiFetch(`/api/atenciones?desde=${fecha}&hasta=${fecha}`);
+    renderCajaTable();
+}
+
+async function cargarReporteDia() {
+    const fecha = $('reporteFechaDia').value;
+    if (!fecha) {
+        throw new Error('Selecciona una fecha para generar el reporte');
+    }
+
+    const peluqueroId = $('reportePeluquero').value || '';
+    const params = new URLSearchParams({
+        desde: fecha,
+        hasta: fecha
+    });
+
+    if (peluqueroId) {
+        params.set('peluqueroId', peluqueroId);
+    }
+
+    const atenciones = await apiFetch(`/api/atenciones?${params.toString()}`);
+    renderReportes(atenciones);
+}
+
+async function cargarConsultaSeguimiento() {
+    if (!isAdminRole()) {
+        return;
+    }
+
+    const clientes = await apiFetch('/api/clientes');
+    state.consultasSeguimiento = buildConsultaSeguimientoDesdeClientes(clientes);
+    state.consultasSeguimientoFiltro = 'todos';
+    renderConsultaSeguimiento();
+}
+
+async function cargarUsuarios() {
+    if (!isAdminRole()) {
+        return;
+    }
+
+    state.usuarios = await apiFetch('/api/users');
+    renderUsuariosTable();
+}
+
+async function cargarTodoInicial() {
+    state.loadedTabs = {};
+    await cargarConfig();
+}
+
+function buildAccountAlertMessage(alerts) {
+    if (!Array.isArray(alerts) || !alerts.length) {
+        return '';
+    }
+
+    return alerts
+        .slice(0, 3)
+        .map((alert) => {
+            if (alert.type === 'upcoming_turn') {
+                if (isAdminRole()) {
+                    return `Recordatorio: a las ${alert.hora} hay un turno de ${alert.cliente || 'cliente'} con ${alert.peluquero || 'peluquero'}.`;
+                }
+
+                return `Recordatorio: a las ${alert.hora} tienes turno con ${alert.cliente || 'cliente'}.`;
+            }
+
+            if (isAdminRole()) {
+                return `Llego una reserva web para ${alert.fecha} a las ${alert.hora} a nombre de ${alert.cliente || 'cliente'}${alert.peluquero ? ` con ${alert.peluquero}` : ''}.`;
+            }
+
+            return `Te reservaron un turno web para ${alert.fecha} a las ${alert.hora} a nombre de ${alert.cliente || 'cliente'}.`;
+        })
+        .join(' ');
+}
+
+async function revisarAlertasCuenta() {
+    if (!state.token || (!isAdminRole() && !hasLinkedBarberAccount())) {
+        return;
+    }
+
+    try {
+        const payload = await apiFetch('/api/dashboard/alertas-cuenta', {
+            showLoading: false
+        });
+        const alerts = Array.isArray(payload?.alerts) ? payload.alerts : [];
+        if (!alerts.length) {
+            return;
+        }
+
+        showMessage(buildAccountAlertMessage(alerts), 'success');
+
+        if (!isAgendaRole() && !document.getElementById('tab-turnos')?.classList.contains('hidden')) {
+            await cargarTurnos();
+        }
+    } catch (error) {
+        console.warn('No se pudieron cargar alertas de cuenta:', error.message);
+    }
+}
+
+function stopAccountAlertWatcher() {
+    if (accountAlertIntervalId) {
+        clearInterval(accountAlertIntervalId);
+        accountAlertIntervalId = null;
+    }
+}
+
+function startAccountAlertWatcher() {
+    stopAccountAlertWatcher();
+
+    if (!isAdminRole() && !hasLinkedBarberAccount()) {
+        return;
+    }
+
+    revisarAlertasCuenta().catch(() => {});
+    accountAlertIntervalId = window.setInterval(() => {
+        revisarAlertasCuenta().catch(() => {});
+    }, 30000);
+}
+
+function showApp() {
+    document.body.classList.add('app-authenticated');
+    $('loginView').classList.add('hidden');
+    $('appView').classList.remove('hidden');
+    $('sessionInfo').textContent = `Usuario: ${state.user.username} (${state.user.role})`;
+    applyRoleVisibility();
+    setTab(isAgendaRole() ? 'turnos' : 'dashboard');
+    startAccountAlertWatcher();
+}
+
+function showLogin() {
+    document.body.classList.remove('app-authenticated');
+    stopAccountAlertWatcher();
+    $('appView').classList.add('hidden');
+    $('loginView').classList.remove('hidden');
+}
+
+async function restoreSession() {
+    if (!state.token) {
+        stopTurnosAhoraWatcher();
+        stopAccountAlertWatcher();
+        state.turnosDelMomento = [];
+        turnosAlertados.clear();
+        renderTurnosAhoraPanel();
+        showLogin();
+        return;
+    }
+
+    try {
+        const me = await apiFetch('/api/auth/me');
+        state.user = {
+            id: me._id,
+            username: me.username,
+            role: me.role,
+            barberId: me.barberId || '',
+            barberNombre: me.barberNombre || ''
+        };
+        localStorage.setItem('agendaUser', JSON.stringify(state.user));
+
+        showApp();
+        await cargarTodoInicial();
+        await activateTab(isAgendaRole() ? 'turnos' : 'dashboard');
+    } catch (error) {
+        localStorage.removeItem('agendaToken');
+        localStorage.removeItem('agendaUser');
+        state.token = null;
+        state.user = null;
+        stopTurnosAhoraWatcher();
+        stopAccountAlertWatcher();
+        turnosAlertados.clear();
+        showLogin();
+    }
+}
+
+function attachEvents() {
+    $('appMessageOk').addEventListener('click', () => {
+        hideMessage();
+    });
+
+    $('turnoFoto1').addEventListener('change', async () => {
+        try {
+            await processTurnoPhoto('1');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('turnoFoto2').addEventListener('change', async () => {
+        try {
+            await processTurnoPhoto('2');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('clienteFoto1Input').addEventListener('change', async () => {
+        try {
+            await processClientePhoto('1');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('clienteFoto2Input').addEventListener('change', async () => {
+        try {
+            await processClientePhoto('2');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cumplePrevMonth').addEventListener('click', () => {
+        changeCumpleMonth(-1);
+    });
+
+    $('cumpleNextMonth').addEventListener('click', () => {
+        changeCumpleMonth(1);
+    });
+
+    $('cumpleGoToday').addEventListener('click', () => {
+        setCurrentCumpleMonth(today().slice(0, 7));
+        state.selectedCumpleDate = null;
+        renderCumpleanos();
+    });
+
+    $('cumpleCalendar').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-action="select-cumple-day"]');
+        if (!button) {
+            return;
+        }
+
+        state.selectedCumpleDate = button.dataset.date;
+        renderCumpleanos();
+    });
+
+    $('cumpleTableBody').addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-action="open-cumple-historial"]');
+        if (!button) {
+            return;
+        }
+
+        await openCumpleHistorialModal(button.dataset.clienteId, button.dataset.clienteNombre);
+    });
+
+    $('closeTurnoFotoModal').addEventListener('click', closeTurnoFotoModal);
+    $('turnoFotoModal').addEventListener('click', (event) => {
+        if (event.target.id === 'turnoFotoModal') {
+            closeTurnoFotoModal();
+        }
+    });
+
+    $('closeCumpleHistorialModal').addEventListener('click', closeCumpleHistorialModal);
+    $('cumpleHistorialModal').addEventListener('click', (event) => {
+        if (event.target.id === 'cumpleHistorialModal') {
+            closeCumpleHistorialModal();
+        }
+    });
+
+    $('loginForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const username = $('loginUsername').value.trim();
+            const password = $('loginPassword').value;
+
+            const result = await apiFetch('/api/auth/login', {
+                auth: false,
+                method: 'POST',
+                body: { username, password }
+            });
+
+            state.token = result.token;
+            state.user = result.user;
+            localStorage.setItem('agendaToken', result.token);
+            localStorage.setItem('agendaUser', JSON.stringify(result.user));
+
+            $('loginForm').reset();
+            showApp();
+            await cargarTodoInicial();
+            await activateTab(isAgendaRole() ? 'turnos' : 'dashboard');
+            showMessage('Sesion iniciada correctamente');
+        } catch (error) {
+            const message = /contrasena incorrecta|usuario o contrasena incorrectos|credenciales invalidas/i.test(String(error.message || ''))
+                ? 'Contrasena incorrecta'
+                : error.message;
+            showMessage(message, 'error');
+        }
+    });
+
+    $('logoutBtn').addEventListener('click', async () => {
+        try {
+            await apiFetch('/api/auth/logout', { method: 'POST' });
+        } catch (error) {
+            console.warn(error.message);
+        }
+
+        localStorage.removeItem('agendaToken');
+        localStorage.removeItem('agendaUser');
+        state.token = null;
+        state.user = null;
+        stopTurnosAhoraWatcher();
+        state.turnosDelMomento = [];
+        turnosAlertados.clear();
+        renderTurnosAhoraPanel();
+        showLogin();
+    });
+
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            if (btn.classList.contains('hidden')) {
+                return;
+            }
             try {
-                const fotoBase64 = await convertirABase64(e.target.files[0]);
-                const clienteActualizado = { ...clienteSeleccionado };
-
-                if (numeroFoto === 1) {
-                    clienteActualizado.foto1 = fotoBase64;
-                } else {
-                    clienteActualizado.foto2 = fotoBase64;
-                }
-
-                // Actualizar en servidor
-                const response = await fetch(`${API_URL}/clientes/${clienteSeleccionado.id}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(clienteActualizado)
-                });
-
-                if (!response.ok) {
-                    throw new Error('Error al actualizar el cliente');
-                }
-
-                // Actualizar local
-                const indice = clientes.findIndex(c => c.id === clienteSeleccionado.id);
-                clientes[indice] = clienteActualizado;
-                clienteSeleccionado = clienteActualizado;
-
-                mostrarDetallesCliente();
-                alert('Foto actualizada correctamente');
+                await activateTab(btn.dataset.tab);
             } catch (error) {
-                alert('Error al cargar la foto: ' + error.message);
+                showMessage(error.message, 'error');
+            }
+        });
+    });
+
+    $('refreshDashboard').addEventListener('click', async () => {
+        try {
+            await cargarDashboard();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('turnoServicio').addEventListener('change', () => {
+        applyTurnoDateTimeConstraints();
+    });
+
+    $('turnoFecha').addEventListener('change', () => {
+        if (!isOpenDay($('turnoFecha').value)) {
+            const adjusted = nextOpenDate($('turnoFecha').value);
+            $('turnoFecha').value = adjusted;
+            showMessage('Solo se permiten turnos de lunes a sabado', 'error');
+        }
+    });
+
+    ['clienteFechaCumpleInput', 'nuevoClienteTurnoFechaCumple', 'peluqueroFechaCumple'].forEach((id) => {
+        const input = $(id);
+        if (!input) {
+            return;
+        }
+
+        input.addEventListener('input', () => {
+            input.value = formatBirthdayInputValue(input.value);
+        });
+    });
+
+    $('turnoCliente').addEventListener('input', () => {
+        syncTurnoClienteByInput();
+    });
+
+    $('turnoCliente').addEventListener('blur', () => {
+        syncTurnoClienteByInput();
+        maybeOpenNuevoClienteTurnoModal();
+    });
+
+    $('cancelNuevoClienteTurno').addEventListener('click', () => {
+        state.pendingTurnoPayload = null;
+        closeNuevoClienteTurnoModal();
+    });
+
+    $('nuevoClienteTurnoModal').addEventListener('click', (event) => {
+        if (event.target.id === 'nuevoClienteTurnoModal') {
+            state.pendingTurnoPayload = null;
+            closeNuevoClienteTurnoModal();
+        }
+    });
+
+    $('turnoForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const fechaTurno = $('turnoFecha').value;
+            const horaTurno = $('turnoHora').value;
+            const servicioTurno = $('turnoServicio').value;
+            const duration = getServiceDurationMinutes(servicioTurno);
+            const inicioMinutos = parseTimeToMinutesLocal(horaTurno);
+            const finMinutos = inicioMinutos + duration;
+
+            if (!isOpenDay(fechaTurno)) {
+                throw new Error('Solo se pueden reservar turnos de lunes a sabado');
+            }
+
+            if (inicioMinutos < OPENING_MINUTES || finMinutos > CLOSING_MINUTES) {
+                const ultimoHorario = minutesToClock(CLOSING_MINUTES - duration);
+                throw new Error(`Horario permitido: 10:00 a ${ultimoHorario} para este servicio`);
+            }
+
+            const foto1 = await getProcessedTurnoPhoto('1');
+            const foto2 = await getProcessedTurnoPhoto('2');
+            const clienteNombre = $('turnoCliente').value.trim();
+            const clienteCoincidente = syncTurnoClienteByInput();
+
+            const payload = {
+                fecha: fechaTurno,
+                hora: horaTurno,
+                peluqueroId: $('turnoPeluquero').value || null,
+                servicioId: servicioTurno,
+                cliente: clienteNombre,
+                clienteId: clienteCoincidente?._id || null,
+                foto1,
+                foto2
+            };
+
+            if (clienteNombre && !clienteCoincidente) {
+                state.pendingTurnoPayload = payload;
+                openNuevoClienteTurnoModal(clienteNombre);
+                showMessage('Cliente no encontrado. Completa el popup para crearlo.', 'error');
+                return;
+            }
+
+            await registrarTurno(payload);
+            showMessage('Turno guardado correctamente');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('nuevoClienteTurnoForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const saved = await apiFetch('/api/clientes', {
+                method: 'POST',
+                body: {
+                    nombre: $('nuevoClienteTurnoNombre').value.trim(),
+                    apellido: $('nuevoClienteTurnoApellido').value.trim(),
+                    telefono: $('nuevoClienteTurnoTelefono').value.trim(),
+                    instagram: $('nuevoClienteTurnoInstagram').value.trim(),
+                    fechaCumpleanos: $('nuevoClienteTurnoFechaCumple').value
+                }
+            });
+
+            $('turnoCliente').value = saved.nombre;
+            state.selectedTurnoClienteId = saved._id;
+            await openClienteConfirmModal('Cliente creado correctamente. Presiona OK para actualizar la lista y continuar.');
+            await cargarClientes();
+            updateTurnoClienteInfo(state.clientes.find((item) => item._id === saved._id) || saved);
+            closeNuevoClienteTurnoModal();
+
+            if (state.pendingTurnoPayload) {
+                const payload = {
+                    ...state.pendingTurnoPayload,
+                    cliente: saved.nombre,
+                    clienteId: saved._id
+                };
+                state.pendingTurnoPayload = null;
+                await registrarTurno(payload);
+                showMessage('Cliente creado y turno guardado correctamente');
+                return;
+            }
+
+            showMessage('Cliente creado correctamente');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('reloadTurnos').addEventListener('click', async () => {
+        try {
+            await cargarTurnos();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('turnosFiltroPeluquero').addEventListener('change', () => {
+        renderTurnosTable();
+    });
+
+    $('editSelectedClienteBtn').addEventListener('click', async () => {
+        if (!state.selectedClienteId) {
+            showMessage('Selecciona un cliente para editar', 'error');
+            return;
+        }
+
+        await fillClienteForm(state.selectedClienteId);
+    });
+
+    $('deleteSelectedClienteBtn').addEventListener('click', async () => {
+        const clienteId = state.selectedClienteId;
+        if (!clienteId) {
+            showMessage('Selecciona un cliente para eliminar', 'error');
+            return;
+        }
+
+        const cliente = state.clientes.find((item) => item._id === clienteId);
+        const nombre = cliente?.nombre || 'este cliente';
+        if (!confirm(`Eliminar a ${nombre}?`)) {
+            return;
+        }
+
+        try {
+            await apiFetch(`/api/clientes/${clienteId}`, { method: 'DELETE' });
+
+            if ($('clienteIdInput').value === clienteId) {
+                resetClienteForm();
+            }
+
+            state.selectedClienteId = null;
+            await cargarClientes();
+            showMessage('Cliente eliminado correctamente');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('clientesSearch').addEventListener('input', () => {
+        renderClientesList();
+    });
+
+    $('descargarAgendaClientesBtn').addEventListener('click', async () => {
+        try {
+            await downloadFile('/api/clientes/excel', 'agenda_clientes.xlsx');
+            showMessage('Agenda de clientes descargada');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('clientesList').addEventListener('click', async (event) => {
+        const item = event.target.closest('[data-action=\"select-cliente\"]');
+        if (!item) {
+            return;
+        }
+        await selectCliente(item.dataset.id);
+    });
+
+    $('turnoClienteInfoFoto1').addEventListener('click', () => {
+        const cliente = state.clientes.find((item) => item._id === state.selectedTurnoClienteId);
+        if (!cliente?.foto1) {
+            return;
+        }
+        openFotosModal(cliente.foto1, cliente.foto2);
+    });
+
+    $('turnoClienteInfoFoto2').addEventListener('click', () => {
+        const cliente = state.clientes.find((item) => item._id === state.selectedTurnoClienteId);
+        if (!cliente?.foto2) {
+            return;
+        }
+        openFotosModal(cliente.foto2, cliente.foto1);
+    });
+
+    $('clienteFoto1').addEventListener('click', () => {
+        const cliente = state.clientes.find((item) => item._id === state.selectedClienteId);
+        if (!cliente?.foto1) {
+            return;
+        }
+        openFotosModal(cliente.foto1, cliente.foto2);
+    });
+
+    $('clienteFoto2').addEventListener('click', () => {
+        const cliente = state.clientes.find((item) => item._id === state.selectedClienteId);
+        if (!cliente?.foto2) {
+            return;
+        }
+        openFotosModal(cliente.foto2, cliente.foto1);
+    });
+
+    $('clienteConfirmOk').addEventListener('click', () => {
+        closeClienteConfirmModal();
+    });
+
+    $('clienteForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const clienteId = $('clienteIdInput').value.trim();
+            const nombre = $('clienteNombreInput').value.trim();
+            const apellido = $('clienteApellidoInput').value.trim();
+            const foto1 = await getProcessedClientePhoto('1');
+            const foto2 = await getProcessedClientePhoto('2');
+
+            if (!nombre || !apellido) {
+                throw new Error('Nombre y apellido son obligatorios');
+            }
+
+            
+
+            const body = {
+                nombre,
+                apellido,
+                telefono: $('clienteTelefonoInput').value.trim(),
+                instagram: $('clienteInstagramInput').value.trim(),
+                fechaCumpleanos: $('clienteFechaCumpleInput').value,
+                foto1,
+                foto2
+            };
+
+            let saved = null;
+            if (clienteId) {
+                saved = await apiFetch(`/api/clientes/${clienteId}`, {
+                    method: 'PUT',
+                    body
+                });
+                resetClienteForm();
+                if (saved?._id) {
+                    state.selectedClienteId = saved._id;
+                }
+                await cargarClientes();
+                showMessage('Cliente actualizado correctamente');
+                return;
+            }
+
+            saved = await apiFetch('/api/clientes', {
+                method: 'POST',
+                body
+            });
+
+            await openClienteConfirmModal('Cliente guardado correctamente. Presiona OK para actualizar la lista de clientes.');
+            resetClienteForm();
+            if (saved?._id) {
+                state.selectedClienteId = saved._id;
+            }
+            await cargarClientes();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cancelEditCliente').addEventListener('click', () => {
+        resetClienteForm();
+    });
+
+    const handleTurnoActionClick = async (event) => {
+        const deleteBtn = event.target.closest('button[data-action="delete-turno"]');
+        const statusBtn = event.target.closest('button[data-action="mark-turno-status"]');
+        const viewPhotosBtn = event.target.closest('button[data-action="view-turno-fotos"]');
+
+        if (viewPhotosBtn) {
+            openTurnoFotoModal(viewPhotosBtn.dataset.id);
+            return;
+        }
+
+        if (statusBtn) {
+            try {
+                await actualizarEstadoTurno(statusBtn.dataset.id, statusBtn.dataset.status);
+                showMessage(`Turno marcado como ${getTurnoEstadoLabel(statusBtn.dataset.status).toLowerCase()}`);
+            } catch (error) {
+                showMessage(error.message, 'error');
+            }
+            return;
+        }
+
+        if (deleteBtn) {
+            if (!confirm('Eliminar este turno?')) {
+                return;
+            }
+
+            try {
+                await apiFetch(`/api/turnos/${deleteBtn.dataset.id}`, { method: 'DELETE' });
+                await Promise.all([
+                    cargarTurnos(),
+                    cargarTurnosDelMomento({ silent: true }),
+                    !isAgendaRole() ? cargarDashboard() : Promise.resolve()
+                ]);
+                showMessage('Turno eliminado');
+            } catch (error) {
+                showMessage(error.message, 'error');
             }
         }
     };
 
-    input.click();
-}
+    $('turnosTableBody').addEventListener('click', handleTurnoActionClick);
+    $('turnosAhoraList').addEventListener('click', handleTurnoActionClick);
 
-// Eliminar cliente
-async function eliminarCliente(clienteId) {
-    if (confirm('¿Estás seguro de que quieres eliminar este cliente?')) {
+    $('peluqueroForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
         try {
-            const response = await fetch(`${API_URL}/clientes/${clienteId}`, {
-                method: 'DELETE'
-            });
+            const id = $('peluqueroId').value;
+            const payload = {
+                nombre: $('peluqueroNombre').value.trim(),
+                telefono: $('peluqueroTelefono').value.trim(),
+                fechaCumpleanos: $('peluqueroFechaCumple').value,
+                porcentajeComision: Number($('peluqueroComision').value),
+                agenda: readPeluqueroAgenda(),
+                activo: $('peluqueroActivo').checked
+            };
 
-            if (!response.ok) {
-                throw new Error('Error al eliminar el cliente');
+            if (id) {
+                await apiFetch(`/api/peluqueros/${id}`, { method: 'PUT', body: payload });
+                showMessage('Peluquero actualizado');
+            } else {
+                await apiFetch('/api/peluqueros', { method: 'POST', body: payload });
+                showMessage('Peluquero creado');
             }
 
-            // Actualizar local
-            clientes = clientes.filter(c => c.id !== clienteId);
-            clienteSeleccionado = null;
-            renderizarListado();
-            mostrarDetallesCliente();
-            alert('Cliente eliminado correctamente');
+            resetPeluqueroForm();
+            await Promise.all([cargarPeluqueros(), cargarDashboard()]);
         } catch (error) {
-            alert('Error: ' + error.message);
-        }
-    }
-}
-
-// Configurar modal
-function configurarModal() {
-    const modal = document.getElementById('fotoModal');
-    const modalClose = document.querySelector('.modal-close');
-
-    modalClose.addEventListener('click', function() {
-        modal.classList.remove('active');
-    });
-
-    modal.addEventListener('click', function(e) {
-        if (e.target === modal) {
-            modal.classList.remove('active');
+            showMessage(error.message, 'error');
         }
     });
 
-    // Cerrar con tecla ESC
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            modal.classList.remove('active');
+    $('cancelEditPeluquero').addEventListener('click', () => {
+        resetPeluqueroForm();
+    });
+
+    $('peluquerosTableBody').addEventListener('click', async (event) => {
+        const editBtn = event.target.closest('button[data-action="edit-peluquero"]');
+        const deleteBtn = event.target.closest('button[data-action="delete-peluquero"]');
+
+        if (editBtn) {
+            fillPeluqueroForm(editBtn.dataset.id);
+            return;
+        }
+
+        if (!deleteBtn) {
+            return;
+        }
+
+        if (!confirm('Eliminar este peluquero?')) {
+            return;
+        }
+
+        try {
+            await apiFetch(`/api/peluqueros/${deleteBtn.dataset.id}`, { method: 'DELETE' });
+            await Promise.all([cargarPeluqueros(), cargarDashboard()]);
+            showMessage('Peluquero eliminado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('servicioForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const payload = readServicioPayload('servicio');
+            await apiFetch('/api/servicios', { method: 'POST', body: payload });
+
+            resetServicioForm();
+            await cargarServiciosCaja();
+            showMessage('Servicio creado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('serviciosTableBody').addEventListener('click', async (event) => {
+        const editBtn = event.target.closest('button[data-action="edit-servicio"]');
+        const deleteBtn = event.target.closest('button[data-action="delete-servicio"]');
+
+        if (editBtn) {
+            openEditarServicioModal(editBtn.dataset.id);
+            return;
+        }
+
+        if (!deleteBtn) {
+            return;
+        }
+
+        if (!confirm('Eliminar este servicio?')) {
+            return;
+        }
+
+        try {
+            await apiFetch(`/api/servicios/${deleteBtn.dataset.id}`, { method: 'DELETE' });
+            await cargarServiciosCaja();
+            showMessage('Servicio eliminado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('editarServicioForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const servicioId = $('editarServicioId').value;
+            if (!servicioId) {
+                throw new Error('Servicio no encontrado');
+            }
+
+            const payload = readServicioPayload('editarServicio');
+            await apiFetch(`/api/servicios/${servicioId}`, { method: 'PUT', body: payload });
+            closeEditarServicioModal();
+            await cargarServiciosCaja();
+            showMessage('Servicio actualizado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cancelEditarServicio').addEventListener('click', () => {
+        closeEditarServicioModal();
+    });
+
+    $('editarServicioModal').addEventListener('click', (event) => {
+        if (event.target.id === 'editarServicioModal') {
+            closeEditarServicioModal();
+        }
+    });
+
+    $('productoForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const payload = readProductoPayload('producto');
+            await apiFetch('/api/productos', { method: 'POST', body: payload });
+
+            resetProductoForm();
+            await cargarProductos();
+            showMessage('Producto creado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('productosTableBody').addEventListener('click', async (event) => {
+        const editBtn = event.target.closest('button[data-action="edit-producto"]');
+        const deleteBtn = event.target.closest('button[data-action="delete-producto"]');
+
+        if (editBtn) {
+            openEditarProductoModal(editBtn.dataset.id);
+            return;
+        }
+
+        if (!deleteBtn) {
+            return;
+        }
+
+        if (!confirm('Eliminar este producto?')) {
+            return;
+        }
+
+        try {
+            await apiFetch(`/api/productos/${deleteBtn.dataset.id}`, { method: 'DELETE' });
+            await cargarProductos();
+            showMessage('Producto eliminado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('editarProductoForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const productoId = $('editarProductoId').value;
+            if (!productoId) {
+                throw new Error('Producto no encontrado');
+            }
+
+            const payload = readProductoPayload('editarProducto');
+            await apiFetch(`/api/productos/${productoId}`, { method: 'PUT', body: payload });
+            closeEditarProductoModal();
+            await cargarProductos();
+            showMessage('Producto actualizado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cancelEditarProducto').addEventListener('click', () => {
+        closeEditarProductoModal();
+    });
+
+    $('editarProductoModal').addEventListener('click', (event) => {
+        if (event.target.id === 'editarProductoModal') {
+            closeEditarProductoModal();
+        }
+    });
+
+    $('cajaServicio').addEventListener('change', () => {
+        syncCajaMonto();
+    });
+
+    $('cajaProducto').addEventListener('change', () => {
+        syncCajaMonto();
+    });
+
+    $('cajaTipoTrabajo').addEventListener('change', () => {
+        renderCajaServiciosSelect();
+    });
+
+    $('cajaTipoVenta').addEventListener('change', () => {
+        updateCajaVentaFields();
+    });
+
+    $('cajaFecha').addEventListener('change', async () => {
+        try {
+            await cargarAtenciones();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cajaTableBody').addEventListener('click', async (event) => {
+        const deleteBtn = event.target.closest('button[data-action="delete-atencion"]');
+        if (!deleteBtn) {
+            return;
+        }
+
+        if (!isAdminRole()) {
+            showMessage('Permisos insuficientes', 'error');
+            return;
+        }
+
+        const attendanceId = String(deleteBtn.dataset.id || '').trim();
+        if (!attendanceId) {
+            return;
+        }
+
+        if (!confirm('Vas a borrar esta venta de caja. Esta accion no se puede deshacer. ¿Continuar?')) {
+            return;
+        }
+
+        try {
+            await apiFetch(`/api/atenciones/${attendanceId}`, {
+                method: 'DELETE',
+                loadingText: 'Eliminando venta...'
+            });
+            await cargarAtenciones();
+            await cargarClientes();
+            await refreshSelectedClienteDetalle();
+            showMessage('Venta eliminada de caja');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cajaForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            const tipoVenta = getCajaSelectedSaleType();
+            const servicioId = $('cajaServicio').value;
+            const productoId = $('cajaProducto').value;
+
+            if (tipoVenta === 'servicio' && !servicioId) {
+                throw new Error('Debes seleccionar un servicio');
+            }
+
+            if (tipoVenta === 'producto' && !productoId) {
+                throw new Error('Debes seleccionar un producto');
+            }
+
+            const cajaClienteRaw = $('cajaCliente').value.trim();
+            const clienteNombre = cajaClienteRaw === 'Sin asignar' ? '' : cajaClienteRaw;
+            const clienteCoincidente = findClienteByNombre(clienteNombre);
+            const atencion = await apiFetch('/api/atenciones', {
+                method: 'POST',
+                body: {
+                    fecha: $('cajaFecha').value,
+                    horaReferencia: getCurrentClockLocal(),
+                    peluqueroId: $('cajaPeluquero').value,
+                    cliente: clienteCoincidente?.nombre || clienteNombre,
+                    clienteId: clienteCoincidente?._id || null,
+                    formaPago: $('cajaFormaPago').value,
+                    tipoVenta,
+                    servicioId: tipoVenta === 'servicio' ? servicioId : null,
+                    productoId: tipoVenta === 'producto' ? productoId : null
+                }
+            });
+
+            setCajaFechaDefault();
+            $('cajaCliente').value = 'Sin asignar';
+            $('cajaFormaPago').value = 'efectivo';
+            $('cajaTipoVenta').value = 'servicio';
+            renderCajaServiciosSelect();
+            renderCajaProductosSelect();
+            updateCajaVentaFields();
+            await cargarAtenciones();
+            showMessage(atencion?.turnoMarcadoAtendido ? 'Venta registrada en caja y turno marcado como atendido' : 'Venta registrada en caja');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cargarReporteDia').addEventListener('click', async () => {
+        try {
+            await cargarReporteDia();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('reporteFechaDia').addEventListener('change', async () => {
+        try {
+            await cargarReporteDia();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('reportePeluquero').addEventListener('change', async () => {
+        try {
+            await cargarReporteDia();
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('exportarReporteDiaExcel').addEventListener('click', async () => {
+        try {
+            const fecha = $('reporteFechaDia').value;
+            if (!fecha) {
+                throw new Error('Selecciona una fecha para exportar el reporte diario');
+            }
+
+            await cargarReporteDia();
+
+            const peluqueroId = $('reportePeluquero').value || '';
+            const params = new URLSearchParams({ fecha });
+            if (peluqueroId) {
+                params.set('peluqueroId', peluqueroId);
+            }
+            await downloadFile(`/api/reportes/caja-diario-excel?${params.toString()}`, `reporte_caja_${fecha}.xlsx`);
+            showMessage('Excel diario descargado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('exportarReporteSemanalExcel').addEventListener('click', async () => {
+        try {
+            const desde = $('reporteSemanaDesde').value;
+            const hasta = $('reporteSemanaHasta').value;
+            validarRangoReportes(desde, hasta);
+
+            const params = new URLSearchParams({ desde, hasta });
+            await downloadFile(
+                `/api/reportes/caja-rango-excel?${params.toString()}`,
+                `reporte_semanal_${desde}_a_${hasta}.xlsx`
+            );
+            showMessage('Excel semanal descargado');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('cargarConsultaSeguimiento').addEventListener('click', async () => {
+        try {
+            await cargarConsultaSeguimiento();
+            showMessage('Consulta de clientes actualizada');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('consultasSeguimientoResumen').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-action="filtro-consulta-color"]');
+        if (!button || !state.consultasSeguimiento) {
+            return;
+        }
+
+        state.consultasSeguimientoFiltro = button.dataset.color || 'todos';
+        renderConsultaSeguimiento();
+    });
+
+    $('usuarioForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+            await apiFetch('/api/users', {
+                method: 'POST',
+                body: {
+                    username: $('usuarioNombre').value.trim(),
+                    password: $('usuarioPassword').value,
+                    role: $('usuarioRol').value,
+                    barberId: $('usuarioPeluquero').value || ''
+                }
+            });
+
+            $('usuarioForm').reset();
+            await cargarUsuarios();
+            showMessage('Usuario creado correctamente');
+        } catch (error) {
+            showMessage(error.message, 'error');
+        }
+    });
+
+    $('usuariosTableBody').addEventListener('click', async (event) => {
+        const button = event.target.closest('button[data-action="edit-user"]');
+        if (!button) {
+            return;
+        }
+
+        const userId = button.dataset.id;
+        const user = state.usuarios.find((item) => String(item._id || item.id) === String(userId));
+        if (!user) {
+            showMessage('Usuario no encontrado', 'error');
+            return;
+        }
+
+        openEditarUsuarioModal(user);
+    });
+
+    $('cancelEditarUsuario').addEventListener('click', () => {
+        closeEditarUsuarioModal();
+    });
+
+    $('editarUsuarioModal').addEventListener('click', (event) => {
+        if (event.target.id === 'editarUsuarioModal') {
+            closeEditarUsuarioModal();
+        }
+    });
+
+    $('editarUsuarioForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const userId = $('editarUsuarioId').value;
+        const username = $('editarUsuarioNombre').value.trim();
+        const role = $('editarUsuarioRol').value;
+        const barberId = $('editarUsuarioPeluquero').value || '';
+        const password = $('editarUsuarioPassword').value;
+
+        if (!userId) {
+            showMessage('Usuario no seleccionado', 'error');
+            return;
+        }
+
+        if (username.length < 3) {
+            showMessage('El usuario debe tener al menos 3 caracteres', 'error');
+            return;
+        }
+
+        try {
+            await apiFetch(`/api/users/${userId}`, {
+                method: 'PUT',
+                body: {
+                    username,
+                    role,
+                    barberId,
+                    password: String(password || '').trim()
+                }
+            });
+
+            await cargarUsuarios();
+            closeEditarUsuarioModal();
+            showMessage('Usuario actualizado correctamente');
+        } catch (error) {
+            showMessage(error.message, 'error');
         }
     });
 }
 
-// Abrir modal con fotos en grande
-function abrirModal() {
-    if (!clienteSeleccionado) return;
-
-    const modal = document.getElementById('fotoModal');
-    const modalFoto1 = document.getElementById('modalFoto1');
-    const modalFoto2 = document.getElementById('modalFoto2');
-
-    modalFoto1.src = clienteSeleccionado.foto1;
-    modalFoto2.src = clienteSeleccionado.foto2;
-
-    modal.classList.add('active');
+function setDefaultDates() {
+    const value = today();
+    const turnoDefaultDate = nextOpenDate(value);
+    const monday = getMondayDateString(value);
+    $('dashboardDate').value = value;
+    $('turnoFecha').value = turnoDefaultDate;
+    $('turnoHora').value = '10:00';
+    $('turnosFiltroFecha').value = value;
+    setCajaFechaDefault();
+    setCurrentCumpleMonth(value.slice(0, 7));
+    state.selectedCumpleDate = null;
+    $('reporteFechaDia').value = value;
+    $('reporteSemanaDesde').value = monday;
+    $('reporteSemanaHasta').value = value;
+    applyTurnoDateTimeConstraints();
 }
 
+async function init() {
+    setDefaultDates();
+    resetPeluqueroForm();
+    resetServicioForm();
+    resetProductoForm();
+    updateCajaVentaFields();
+    attachEvents();
+    await restoreSession();
+}
+
+init();

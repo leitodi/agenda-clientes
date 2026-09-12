@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Mate de prueba</title>
+  <desc id="desc">Ilustracion de un mate con bombilla y vapor para el carrusel.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1b1208"/>
+      <stop offset="100%" stop-color="#6a4511"/>
+    </linearGradient>
+    <linearGradient id="gourd" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8a5c25"/>
+      <stop offset="100%" stop-color="#57320d"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <ellipse cx="820" cy="760" rx="480" ry="70" fill="#0f0d0a" opacity="0.35"/>
+  <path d="M692 290 C650 392 618 484 630 588 C642 688 720 764 820 764 C920 764 998 688 1010 588 C1022 486 992 392 948 290 Z" fill="url(#gourd)" stroke="#deb34f" stroke-width="10"/>
+  <ellipse cx="820" cy="294" rx="134" ry="48" fill="#d9c67a"/>
+  <ellipse cx="820" cy="302" rx="112" ry="36" fill="#698046"/>
+  <path d="M900 114 L942 120 L886 470 L846 464 Z" fill="#d9d9d9"/>
+  <circle cx="926" cy="122" r="26" fill="#ececec"/>
+  <g fill="none" stroke="#fff6df" stroke-linecap="round" opacity="0.54">
+    <path d="M728 212 C694 174 698 140 724 102" stroke-width="12"/>
+    <path d="M818 186 C792 152 794 110 820 74" stroke-width="11"/>
+    <path d="M904 210 C882 176 890 136 922 96" stroke-width="10"/>
+  </g>
+  <text x="92" y="140" fill="#fff8ea" font-size="64" font-family="Georgia, serif">Mate de prueba</text>
+</svg>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Mapa de Cordoba de prueba</title>
+  <desc id="desc">Grafica estilizada inspirada en un mapa de Cordoba para el carrusel.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#111111"/>
+      <stop offset="100%" stop-color="#3d2b0d"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <g opacity="0.24" stroke="#d4af37" stroke-width="4">
+    <path d="M130 190 H1460"/>
+    <path d="M130 340 H1460"/>
+    <path d="M130 500 H1460"/>
+    <path d="M130 660 H1460"/>
+    <path d="M250 110 V790"/>
+    <path d="M520 110 V790"/>
+    <path d="M800 110 V790"/>
+    <path d="M1080 110 V790"/>
+    <path d="M1360 110 V790"/>
+  </g>
+  <path d="M832 176 L940 215 L1040 204 L1134 280 L1102 372 L1158 444 L1088 528 L1096 617 L998 690 L907 666 L804 724 L710 680 L634 702 L560 628 L474 598 L460 506 L392 414 L442 338 L432 241 L528 212 L612 150 L714 165 Z" fill="#d4af37" opacity="0.18" stroke="#e8ca69" stroke-width="10"/>
+  <path d="M842 276 C910 276 968 328 968 392 C968 474 884 530 842 618 C798 530 716 474 716 392 C716 328 774 276 842 276 Z" fill="#e3bb45"/>
+  <circle cx="842" cy="392" r="46" fill="#1b1a18"/>
+  <text x="100" y="138" fill="#fff8ea" font-size="64" font-family="Georgia, serif">Mapa de Cordoba</text>
+  <text x="100" y="204" fill="#d9c28a" font-size="30" font-family="Arial, sans-serif">Imagen de prueba para el carrusel</text>
+</svg>

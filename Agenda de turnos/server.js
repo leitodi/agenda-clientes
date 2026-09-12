@@ -1,190 +1,378 @@
 require('dotenv').config();
-const express = require('express');
 const path = require('path');
-const bodyParser = require('body-parser');
+const express = require('express');
 const cors = require('cors');
+const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
+const { version: appVersion } = require('./package.json');
+
+const authRoutes = require('./src/routes/auth');
+const userRoutes = require('./src/routes/users');
+const barberRoutes = require('./src/routes/barbers');
+const appointmentRoutes = require('./src/routes/appointments');
+const attendanceRoutes = require('./src/routes/attendances');
+const reportRoutes = require('./src/routes/reports');
+const dashboardRoutes = require('./src/routes/dashboard');
+const clientRoutes = require('./src/routes/clients');
+const serviceRoutes = require('./src/routes/services');
+const productRoutes = require('./src/routes/products');
+const publicBookingRoutes = require('./src/routes/publicBooking');
+const Client = require('./src/models/Client');
+const Barber = require('./src/models/Barber');
+const Service = require('./src/models/Service');
+const Product = require('./src/models/Product');
+const Appointment = require('./src/models/Appointment');
+const Attendance = require('./src/models/Attendance');
+const { ensureSeedData } = require('./src/utils/seed');
+const { SERVICE_TYPES } = require('./src/utils/services');
+const { normalizeServiceWorkType } = require('./src/utils/serviceWorkTypes');
+const { getConfiguredMongoUri, getActiveDbName, LEGACY_DB_NAME } = require('./src/utils/dbConfig');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/agenda_clientes';
+const MONGODB_URI = getConfiguredMongoUri();
+const ACTIVE_DB_NAME = getActiveDbName();
+const STATIC_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, proxy-revalidate';
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const APP_MODE = String(process.env.APP_MODE || 'internal').trim().toLowerCase();
+const IS_RESERVATIONS_APP = APP_MODE === 'reservas';
 
-// Middleware
 app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
-
-const clienteSchema = new mongoose.Schema(
-    {
-        nombre: { type: String, required: true, trim: true },
-        telefono: { type: String, required: true, trim: true },
-        instagram: { type: String, default: '', trim: true },
-        foto1: { type: String, required: true },
-        foto2: { type: String, required: true }
-    },
-    {
-        timestamps: { createdAt: 'fecha_creacion', updatedAt: false }
+app.use(bodyParser.json({ limit: '20mb' }));
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use((req, res, next) => {
+    if (req.method === 'GET') {
+        res.setHeader('Cache-Control', STATIC_CACHE_CONTROL);
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Surrogate-Control', 'no-store');
     }
-);
 
-const Cliente = mongoose.model('Cliente', clienteSchema);
+    next();
+});
 
-function serializarCliente(cliente) {
-    return {
-        id: cliente._id.toString(),
-        nombre: cliente.nombre,
-        telefono: cliente.telefono,
-        instagram: cliente.instagram,
-        foto1: cliente.foto1,
-        foto2: cliente.foto2,
-        fecha_creacion: cliente.fecha_creacion
-    };
+function sendInternalApp(res) {
+    res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));
 }
 
-async function cargarDatosEjemplo() {
-    const count = await Cliente.countDocuments();
-    console.log(`Clientes en base de datos: ${count}`);
-
-    if (count > 0) {
-        console.log(`Base de datos ya contiene ${count} clientes`);
-        return;
-    }
-
-    const ejemplos = [
-        {
-            nombre: 'Maria Gonzalez',
-            telefono: '+34 612 345 678',
-            instagram: 'maria.gonzalez',
-            foto1: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%233498db" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EMaria Gonzalez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 1%3C/tspan%3E%3C/text%3E%3C/svg%3E',
-            foto2: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%239b59b6" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EMaria Gonzalez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 2%3C/tspan%3E%3C/text%3E%3C/svg%3E'
-        },
-        {
-            nombre: 'Juan Perez',
-            telefono: '+34 698 765 432',
-            instagram: 'juan.perez.style',
-            foto1: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%2327ae60" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EJuan Perez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 1%3C/tspan%3E%3C/text%3E%3C/svg%3E',
-            foto2: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23e74c3c" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EJuan Perez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 2%3C/tspan%3E%3C/text%3E%3C/svg%3E'
-        },
-        {
-            nombre: 'Ana Martinez',
-            telefono: '+34 722 111 222',
-            instagram: 'ana.martinez',
-            foto1: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f39c12" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EAna Martinez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 1%3C/tspan%3E%3C/text%3E%3C/svg%3E',
-            foto2: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%231abc9c" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3EAna Martinez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 2%3C/tspan%3E%3C/text%3E%3C/svg%3E'
-        },
-        {
-            nombre: 'Carlos Lopez',
-            telefono: '+34 666 999 333',
-            instagram: 'carlos.beauty',
-            foto1: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%2334495e" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3ECarlos Lopez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 1%3C/tspan%3E%3C/text%3E%3C/svg%3E',
-            foto2: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%232ecc71" width="400" height="400"/%3E%3Ctext x="50%" y="50%" font-size="24" fill="white" text-anchor="middle" dominant-baseline="middle"%3E%3Ctspan x="50%" dy="0"%3ECarlos Lopez%3C/tspan%3E%3Ctspan x="50%" dy="30"%3EFoto 2%3C/tspan%3E%3C/text%3E%3C/svg%3E'
-        }
-    ];
-
-    await Cliente.insertMany(ejemplos);
-    console.log('Datos de ejemplo cargados correctamente');
+function sendReservationsApp(res) {
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 }
 
-// ============ RUTAS API ============
-
-// GET - Obtener todos los clientes
-app.get('/api/clientes', async (req, res) => {
-    try {
-        const clientes = await Cliente.find().sort({ fecha_creacion: -1 });
-        res.json(clientes.map(serializarCliente));
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+app.get('/', (req, res) => {
+    if (IS_RESERVATIONS_APP) {
+        return sendReservationsApp(res);
     }
+
+    return sendInternalApp(res);
 });
 
-// GET - Obtener cliente por ID
-app.get('/api/clientes/:id', async (req, res) => {
+app.get('/admin', (req, res) => {
+    if (IS_RESERVATIONS_APP) {
+        return res.status(404).send('No encontrado');
+    }
+
+    return sendInternalApp(res);
+});
+
+app.get('/reservas', (req, res) => {
+    return sendReservationsApp(res);
+});
+
+app.use(express.static(PUBLIC_DIR, {
+    etag: false,
+    lastModified: false,
+    maxAge: 0
+}));
+
+app.get('/api/health', (req, res) => {
+    res.json({
+        ok: true,
+        timestamp: new Date().toISOString(),
+        appVersion,
+        appMode: APP_MODE,
+        configuredDbName: ACTIVE_DB_NAME,
+        dbName: mongoose.connection?.name || '',
+        dbHost: mongoose.connection?.host || '',
+        readyState: mongoose.connection?.readyState ?? null
+    });
+});
+
+app.get('/api/config', (req, res) => {
+    res.json({
+        servicios: SERVICE_TYPES
+    });
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/peluqueros', barberRoutes);
+app.use('/api/turnos', appointmentRoutes);
+app.use('/api/clientes', clientRoutes);
+app.use('/api/servicios', serviceRoutes);
+app.use('/api/productos', productRoutes);
+app.use('/api/atenciones', attendanceRoutes);
+app.use('/api/reportes', reportRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/public', publicBookingRoutes);
+
+app.use((error, req, res, next) => {
+    console.error('Error no controlado:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+});
+
+async function ensureClientIndexes() {
+    const collection = mongoose.connection.collection('clients');
+
     try {
-        const cliente = await Cliente.findById(req.params.id);
-        if (!cliente) {
-            res.status(404).json({ error: 'Cliente no encontrado' });
-            return;
+        const indexes = await collection.indexes();
+        const uniqueByName = indexes.find((index) => index.name === 'nombreNormalizado_1' && index.unique);
+
+        if (uniqueByName) {
+            await collection.dropIndex('nombreNormalizado_1');
+            console.log('Indice unico nombreNormalizado_1 eliminado');
         }
-        res.json(serializarCliente(cliente));
     } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST - Crear nuevo cliente
-app.post('/api/clientes', async (req, res) => {
-    const { nombre, telefono, instagram, foto1, foto2 } = req.body;
-
-    if (!nombre || !telefono || !foto1 || !foto2) {
-        res.status(400).json({ error: 'Faltan campos requeridos' });
-        return;
+        console.warn('No se pudo revisar/eliminar indice nombreNormalizado_1:', error.message);
     }
 
     try {
-        const nuevoCliente = await Cliente.create({
-            nombre,
-            telefono,
-            instagram: instagram || '',
-            foto1,
-            foto2
-        });
-        res.json(serializarCliente(nuevoCliente));
+        await collection.createIndex({ nombreNormalizado: 1 }, { name: 'nombreNormalizado_1' });
+        await collection.createIndex({ telefonoNormalizado: 1 }, { name: 'telefonoNormalizado_1' });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.warn('No se pudieron crear indices de clientes:', error.message);
     }
-});
-
-// PUT - Actualizar cliente
-app.put('/api/clientes/:id', async (req, res) => {
-    const { nombre, telefono, instagram, foto1, foto2 } = req.body;
 
     try {
-        const clienteActualizado = await Cliente.findByIdAndUpdate(
-            req.params.id,
-            { nombre, telefono, instagram, foto1, foto2 },
-            { new: true, runValidators: true }
+        const clientesSinTelefonoNormalizado = await Client.find({
+            telefono: { $exists: true, $ne: '' },
+            $or: [{ telefonoNormalizado: { $exists: false } }, { telefonoNormalizado: '' }]
+        }).select('_id telefono');
+
+        if (clientesSinTelefonoNormalizado.length) {
+            const operations = clientesSinTelefonoNormalizado.map((cliente) => ({
+                updateOne: {
+                    filter: { _id: cliente._id },
+                    update: {
+                        $set: {
+                            telefonoNormalizado: String(cliente.telefono || '').replace(/\D/g, '').trim()
+                        }
+                    }
+                }
+            }));
+
+            await Client.bulkWrite(operations);
+            console.log(`Clientes actualizados con telefonoNormalizado: ${clientesSinTelefonoNormalizado.length}`);
+        }
+    } catch (error) {
+        console.warn('No se pudo normalizar telefono de clientes existentes:', error.message);
+    }
+}
+
+async function ensureServiceIndexes() {
+    const collection = mongoose.connection.collection('services');
+
+    try {
+        const indexes = await collection.indexes();
+        const uniqueByName = indexes.find((index) => index.name === 'nombreNormalizado_1' && index.unique);
+
+        if (uniqueByName) {
+            await collection.dropIndex('nombreNormalizado_1');
+            console.log('Indice unico nombreNormalizado_1 eliminado en servicios');
+        }
+    } catch (error) {
+        console.warn('No se pudo revisar/eliminar indice unico de servicios:', error.message);
+    }
+
+    try {
+        await collection.createIndex(
+            { nombreNormalizado: 1, tipoTrabajo: 1 },
+            { name: 'nombreNormalizado_1_tipoTrabajo_1', unique: true }
         );
+    } catch (error) {
+        console.warn('No se pudo crear indice compuesto de servicios:', error.message);
+    }
 
-        if (!clienteActualizado) {
-            res.status(404).json({ error: 'Cliente no encontrado' });
-            return;
+    try {
+        const services = await Service.find().select('_id tipoTrabajo');
+        const operations = services
+            .map((service) => {
+                const normalized = normalizeServiceWorkType(service.tipoTrabajo);
+                if (normalized === String(service.tipoTrabajo || '').trim().toLowerCase()) {
+                    return null;
+                }
+
+                return {
+                    updateOne: {
+                        filter: { _id: service._id },
+                        update: { $set: { tipoTrabajo: normalized } }
+                    }
+                };
+            })
+            .filter(Boolean);
+
+        if (operations.length) {
+            await Service.bulkWrite(operations);
+            console.log(`Servicios actualizados con tipoTrabajo normalizado: ${operations.length}`);
+        }
+    } catch (error) {
+        console.warn('No se pudo normalizar tipoTrabajo en servicios:', error.message);
+    }
+}
+
+async function ensureProductIndexes() {
+    const collection = mongoose.connection.collection('products');
+
+    try {
+        const indexes = await collection.indexes();
+        const uniqueByName = indexes.find((index) => index.name === 'nombreNormalizado_1' && index.unique);
+
+        if (!uniqueByName) {
+            await collection.createIndex(
+                { nombreNormalizado: 1 },
+                { name: 'nombreNormalizado_1', unique: true }
+            );
+        }
+    } catch (error) {
+        console.warn('No se pudo revisar/crear indice de productos:', error.message);
+    }
+}
+
+function toUpperTrimmed(value) {
+    const text = String(value || '').trim();
+    return text ? text.toUpperCase() : '';
+}
+
+function normalizeName(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+async function migrateUppercaseField(model, field, label) {
+    try {
+        const docs = await model.find({
+            [field]: { $exists: true, $ne: '' }
+        }).select(`_id ${field}`);
+
+        const operations = docs
+            .map((doc) => {
+                const currentValue = String(doc[field] || '');
+                const upperValue = toUpperTrimmed(currentValue);
+                if (!upperValue || upperValue === currentValue) {
+                    return null;
+                }
+
+                return {
+                    updateOne: {
+                        filter: { _id: doc._id },
+                        update: { $set: { [field]: upperValue } }
+                    }
+                };
+            })
+            .filter(Boolean);
+
+        if (operations.length) {
+            await model.bulkWrite(operations);
+            console.log(`${label} actualizados en mayusculas: ${operations.length}`);
+        }
+    } catch (error) {
+        console.warn(`No se pudieron normalizar ${label}:`, error.message);
+    }
+}
+
+async function ensureUppercaseData() {
+    await migrateUppercaseField(Client, 'nombre', 'clientes.nombre');
+    await migrateUppercaseField(Client, 'ultimaAtencionPeluquero', 'clientes.ultimaAtencionPeluquero');
+    await migrateUppercaseField(Barber, 'nombre', 'peluqueros.nombre');
+    await migrateUppercaseField(Service, 'nombre', 'servicios.nombre');
+    await migrateUppercaseField(Product, 'nombre', 'productos.nombre');
+    await migrateUppercaseField(Appointment, 'cliente', 'turnos.cliente');
+    await migrateUppercaseField(Appointment, 'servicioNombre', 'turnos.servicioNombre');
+    await migrateUppercaseField(Attendance, 'cliente', 'atenciones.cliente');
+    await migrateUppercaseField(Attendance, 'servicioNombre', 'atenciones.servicioNombre');
+    await migrateUppercaseField(Attendance, 'productoNombre', 'atenciones.productoNombre');
+}
+
+async function ensureAttendanceClientLinks() {
+    try {
+        const clients = await Client.find({
+            nombreNormalizado: { $exists: true, $ne: '' }
+        }).select('_id nombreNormalizado');
+
+        const clientIdsByName = new Map();
+        clients.forEach((client) => {
+            const key = normalizeName(client.nombreNormalizado);
+            if (!key) {
+                return;
+            }
+
+            const sameNameClients = clientIdsByName.get(key) || [];
+            sameNameClients.push(client._id);
+            clientIdsByName.set(key, sameNameClients);
+        });
+
+        const attendances = await Attendance.find({
+            $or: [
+                { clientId: { $exists: false } },
+                { clientId: null }
+            ],
+            cliente: { $exists: true, $ne: '' }
+        }).select('_id cliente');
+
+        const operations = attendances
+            .map((attendance) => {
+                const key = normalizeName(attendance.cliente);
+                const matchedClientIds = clientIdsByName.get(key) || [];
+                if (matchedClientIds.length !== 1) {
+                    return null;
+                }
+
+                return {
+                    updateOne: {
+                        filter: { _id: attendance._id },
+                        update: { $set: { clientId: matchedClientIds[0] } }
+                    }
+                };
+            })
+            .filter(Boolean);
+
+        if (operations.length) {
+            await Attendance.bulkWrite(operations);
+            console.log(`Atenciones vinculadas a clientes por nombre: ${operations.length}`);
+        }
+    } catch (error) {
+        console.warn('No se pudieron vincular atenciones con clientes:', error.message);
+    }
+}
+
+async function startServer() {
+    try {
+        if (String(process.env.MONGODB_DB_NAME || '').trim() === LEGACY_DB_NAME) {
+            console.warn(`MONGODB_DB_NAME apuntaba a ${LEGACY_DB_NAME}; se usara ${ACTIVE_DB_NAME}.`);
         }
 
-        res.json(serializarCliente(clienteActualizado));
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// DELETE - Eliminar cliente
-app.delete('/api/clientes/:id', async (req, res) => {
-    try {
-        const eliminado = await Cliente.findByIdAndDelete(req.params.id);
-        if (!eliminado) {
-            res.status(404).json({ error: 'Cliente no encontrado' });
-            return;
+        if (String(process.env.MONGODB_URI || '').includes(`/${LEGACY_DB_NAME}`)) {
+            console.warn(`MONGODB_URI apuntaba a ${LEGACY_DB_NAME}; se usara ${ACTIVE_DB_NAME}.`);
         }
-        res.json({ message: 'Cliente eliminado correctamente' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
 
-async function iniciarServidor() {
-    try {
-        await mongoose.connect(MONGODB_URI);
-        console.log('Conectado a MongoDB');
-        await cargarDatosEjemplo();
+        await mongoose.connect(MONGODB_URI, {
+            dbName: ACTIVE_DB_NAME
+        });
+        console.log(`Conectado a MongoDB (${ACTIVE_DB_NAME})`);
+
+        await ensureClientIndexes();
+        await ensureServiceIndexes();
+        await ensureProductIndexes();
+        await ensureSeedData();
+        await ensureUppercaseData();
+        await ensureAttendanceClientLinks();
 
         app.listen(PORT, () => {
-            console.log(`Servidor ejecutandose en http://localhost:${PORT}`);
-            console.log('Presiona Ctrl+C para detener el servidor');
+            console.log(`Servidor listo en http://localhost:${PORT}`);
         });
     } catch (error) {
-        console.error('Error al iniciar el servidor:', error.message);
+        console.error('Error al iniciar servidor:', error.message);
         process.exit(1);
     }
 }
 
-iniciarServidor();
+startServer();

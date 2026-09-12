@@ -3,94 +3,166 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agenda de Clientes</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Salon Milano | Reservas Online</title>
+    <link rel="icon" type="image/svg+xml" href="favicon-sm.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="booking.css?v=20260506-6">
 </head>
 <body>
-    <!-- Navegación -->
-    <nav class="navbar">
-        <div class="container">
-            <div class="logo">📅 Agenda de Clientes</div>
-        </div>
-    </nav>
-
-    <div class="container">
-        <div class="agenda-wrapper">
-            <!-- Sección de Formulario -->
-            <section class="formulario-section">
-                <h2>Agregar Cliente</h2>
-                <form id="clienteForm" class="form-cliente">
-                    <div class="form-group">
-                        <label for="nombre">Nombre:</label>
-                        <input type="text" id="nombre" placeholder="Nombre del cliente" required>
+    <div class="page-shell">
+        <main id="top">
+            <section class="hero-section">
+                <section class="carousel-card" aria-label="Galeria del salon">
+                    <div class="carousel-track" id="carouselTrack">
+                        <article class="carousel-slide is-active">
+                            <img src="imagenes/salon-milano-slide.svg" alt="Salon Milano">
+                        </article>
+                        <article class="carousel-slide">
+                            <img src="imagenes/paisaje-prueba.svg" alt="Paisaje de prueba">
+                        </article>
+                        <article class="carousel-slide">
+                            <img src="imagenes/mapa-cordoba-prueba.svg" alt="Mapa de Cordoba de prueba">
+                        </article>
+                        <article class="carousel-slide">
+                            <img src="imagenes/mate-prueba.svg" alt="Mate de prueba">
+                        </article>
                     </div>
-
-                    <div class="form-group">
-                        <label for="telefono">Teléfono:</label>
-                        <input type="tel" id="telefono" placeholder="Número de teléfono" required>
+                    <div class="carousel-controls">
+                        <button id="prevSlide" type="button" class="ghost-btn" aria-label="Imagen anterior">&lt;</button>
+                        <div id="carouselDots" class="carousel-dots" aria-label="Selector de imagen"></div>
+                        <button id="nextSlide" type="button" class="ghost-btn" aria-label="Imagen siguiente">&gt;</button>
                     </div>
-
-                    <div class="form-group">
-                        <label for="instagram">Instagram:</label>
-                        <input type="text" id="instagram" placeholder="@usuario_instagram">
-                    </div>
-
-                    <div class="form-group fotos-group">
-                        <label>Foto 1:</label>
-                        <div class="foto-container">
-                            <input type="file" id="foto1" accept="image/*" class="foto-input">
-                            <label for="foto1" class="foto-label">+ Cargar Foto 1</label>
-                            <img id="preview-foto1" class="foto-preview" alt="Vista previa">
-                        </div>
-                    </div>
-
-                    <div class="form-group fotos-group">
-                        <label>Foto 2:</label>
-                        <div class="foto-container">
-                            <input type="file" id="foto2" accept="image/*" class="foto-input">
-                            <label for="foto2" class="foto-label">+ Cargar Foto 2</label>
-                            <img id="preview-foto2" class="foto-preview" alt="Vista previa">
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary">Guardar Cliente</button>
-                </form>
+                </section>
             </section>
 
-            <!-- Sección de Listado y Detalles -->
-            <section class="listado-section">
-                <h2>Mis Clientes</h2>
-                
-                <div class="listado-container">
-                    <!-- Listado de Clientes -->
-                    <div class="clientes-list-wrapper">
-                        <div id="clientesList" class="clientes-list">
-                            <p class="empty-message">Cargando clientes...</p>
-                        </div>
+            <section id="reservas" class="booking-layout">
+                <article class="booking-panel">
+                    <div class="section-heading">
+                        <p class="eyebrow">Reserva tu turno</p>
                     </div>
 
-                    <!-- Detalles del Cliente -->
-                    <div class="cliente-detalles-wrapper">
-                        <div id="clienteDetalles" class="cliente-detalles">
-                            <p class="empty-message">Selecciona un cliente para ver los detalles</p>
+                    <form id="bookingForm" class="booking-form">
+                        <div class="field-grid">
+                            <label>
+                                Servicio
+                                <select id="serviceSelect" required></select>
+                            </label>
+                            <label>
+                                Peluquero
+                                <select id="barberSelect">
+                                    <option value="">Primero disponible</option>
+                                </select>
+                            </label>
                         </div>
-                    </div>
+
+                        <div class="booking-split-grid">
+                            <section class="picker-panel">
+                                <div class="picker-header">
+                                    <div>
+                                        <h3>Cliente</h3>
+                                        <p>Seleccionate como cliente existente o agrega uno nuevo.</p>
+                                    </div>
+                                </div>
+
+                                <div class="client-mode-toggle" role="tablist" aria-label="Modo de cliente">
+                                    <button id="existingClientModeBtn" type="button" class="mode-btn is-active" data-client-mode="existing">Cliente existente</button>
+                                    <button id="newClientModeBtn" type="button" class="mode-btn" data-client-mode="new">Cliente nuevo</button>
+                                </div>
+
+                                <div id="existingClientPanel" class="client-panel">
+                                    <label>
+                                        Cliente
+                                        <input id="existingClientSearch" type="text" placeholder="Escribe tu nombre">
+                                    </label>
+                                    <div id="existingClientResults" class="client-results hidden"></div>
+                                    <div id="selectedExistingClient" class="selected-client hidden"></div>
+                                </div>
+
+                                <div id="newClientPanel" class="client-panel hidden">
+                                    <button id="openNewClientModalBtn" type="button" class="ghost-btn compact">Cargar cliente nuevo</button>
+                                    <div id="newClientSummary" class="selected-client hidden"></div>
+                                </div>
+                            </section>
+
+                            <section class="picker-panel picker-panel-compact">
+                                <div class="picker-header">
+                                    <div>
+                                        <h3>Fecha y horario</h3>
+                                    </div>
+                                </div>
+                                <div class="field-grid field-grid-compact">
+                                    <label>
+                                        Dia
+                                        <input id="bookingDate" type="date">
+                                    </label>
+                                    <label>
+                                        Horario
+                                        <select id="timeSelect">
+                                            <option value="">Selecciona un horario</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <button id="refreshAvailability" type="button" class="ghost-btn compact">Actualizar disponibilidad</button>
+                                <div id="availabilityInfo" class="empty-state hidden">
+                                    Selecciona una fecha para ver horarios disponibles.
+                                </div>
+                            </section>
+                        </div>
+
+                        <button id="submitBooking" type="submit" class="primary-btn">Confirmar reserva</button>
+                    </form>
+
+                    <div id="bookingMessage" class="booking-message hidden" aria-live="polite"></div>
+                </article>
+
+                <aside class="info-panel">
+                    <article class="info-card accent-card">
+                        <p class="eyebrow">Como funciona</p>
+                        <h3>Reserva sin llamadas</h3>
+                        <p>Primero eliges el servicio. Luego puedes reservar con tu peluquero favorito o dejar que el sistema te ubique en el primer horario libre del equipo.</p>
+                    </article>
+
+                    <article class="info-card">
+                        <p class="eyebrow">Atencion</p>
+                        <h3 id="businessAddress">Horario de lunes a sabados de 9 a 22</h3>
+                        <p id="businessContactText">Agenda abierta para cortes, barba y servicios de peluqueria.</p>
+                    </article>
+                </aside>
+            </section>
+        </main>
+    </div>
+
+    <div id="newClientModal" class="modal hidden">
+        <div class="modal-card modal-card-small">
+            <div class="modal-header">
+                <div>
+                    <p class="eyebrow">Cliente nuevo</p>
+                    <h3>Agregar cliente</h3>
                 </div>
-            </section>
-        </div>
-    </div>
-
-    <!-- Modal para ver fotos en grande -->
-    <div id="fotoModal" class="modal">
-        <div class="modal-content">
-            <span class="modal-close">&times;</span>
-            <div class="modal-fotos">
-                <img id="modalFoto1" class="modal-foto" alt="Foto 1">
-                <img id="modalFoto2" class="modal-foto" alt="Foto 2">
+                <button id="closeNewClientModalBtn" type="button" class="ghost-btn compact">Cerrar</button>
             </div>
+            <form id="newClientModalForm" class="booking-form">
+                <div class="field-grid">
+                    <label>
+                        Nombre y apellido
+                        <input id="customerName" type="text" placeholder="Ej: Juan Perez" required>
+                    </label>
+                    <label>
+                        Telefono
+                        <input id="customerPhone" type="tel" placeholder="Ej: 3511234567" required>
+                    </label>
+                </div>
+                <label>
+                    Instagram (opcional)
+                    <input id="customerInstagram" type="text" placeholder="@tuusuario">
+                </label>
+                <button type="submit" class="primary-btn">Guardar cliente</button>
+            </form>
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="booking.js?v=20260506-8"></script>
 </body>
 </html>
