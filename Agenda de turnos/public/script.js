@@ -1026,10 +1026,35 @@ function completarClientesDatalist() {
     if (datalistClientes) {
         datalistClientes.innerHTML = options;
     }
+}
 
-    const datalistCaja = $('cajaClientesDatalist');
-    if (datalistCaja) {
-        datalistCaja.innerHTML = '<option value="Sin asignar"></option>' + options;
+function renderCajaClientesSelect() {
+    const select = $('cajaCliente');
+    if (!select) {
+        return;
+    }
+
+    const previous = select.value;
+    const clientesOrdenados = [...state.clientes].sort((a, b) => {
+        const aSinAsignar = normalizeText(a.nombre) === 'sin asignar';
+        const bSinAsignar = normalizeText(b.nombre) === 'sin asignar';
+        if (aSinAsignar && !bSinAsignar) {
+            return -1;
+        }
+        if (bSinAsignar && !aSinAsignar) {
+            return 1;
+        }
+        return normalizeText(a.nombre).localeCompare(normalizeText(b.nombre));
+    });
+
+    const options = ['<option value="" disabled selected>Selecciona un cliente</option>']
+        .concat(clientesOrdenados.map((cliente) => `<option value="${cliente._id}">${escapeHtml(cliente.nombre)}</option>`))
+        .join('');
+
+    select.innerHTML = options;
+
+    if (previous && clientesOrdenados.some((cliente) => cliente._id === previous)) {
+        select.value = previous;
     }
 }
 
@@ -2822,6 +2847,7 @@ async function cargarProductos() {
 async function cargarClientes() {
     state.clientes = await apiFetch('/api/clientes');
     completarClientesDatalist();
+    renderCajaClientesSelect();
     renderClientesList();
     renderCumpleanos();
 
@@ -3807,17 +3833,19 @@ function attachEvents() {
                 throw new Error('Debes seleccionar un producto');
             }
 
-            const cajaClienteRaw = $('cajaCliente').value.trim();
-            const clienteNombre = cajaClienteRaw === 'Sin asignar' ? '' : cajaClienteRaw;
-            const clienteCoincidente = findClienteByNombre(clienteNombre);
+            const clienteId = $('cajaCliente').value;
+            if (!clienteId) {
+                throw new Error('Debes seleccionar un cliente');
+            }
+            const clienteSeleccionado = state.clientes.find((cliente) => cliente._id === clienteId);
             const atencion = await apiFetch('/api/atenciones', {
                 method: 'POST',
                 body: {
                     fecha: $('cajaFecha').value,
                     horaReferencia: getCurrentClockLocal(),
                     peluqueroId: $('cajaPeluquero').value,
-                    cliente: clienteCoincidente?.nombre || clienteNombre,
-                    clienteId: clienteCoincidente?._id || null,
+                    cliente: clienteSeleccionado?.nombre || '',
+                    clienteId,
                     formaPago: $('cajaFormaPago').value,
                     tipoVenta,
                     servicioId: tipoVenta === 'servicio' ? servicioId : null,
@@ -3826,7 +3854,7 @@ function attachEvents() {
             });
 
             setCajaFechaDefault();
-            $('cajaCliente').value = 'Sin asignar';
+            $('cajaCliente').value = '';
             $('cajaFormaPago').value = 'efectivo';
             $('cajaTipoVenta').value = 'servicio';
             renderCajaServiciosSelect();

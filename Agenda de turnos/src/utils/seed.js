@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Barber = require('../models/Barber');
 const Attendance = require('../models/Attendance');
 const Service = require('../models/Service');
+const Client = require('../models/Client');
 const {
     DEFAULT_SERVICE_WORK_TYPE,
     normalizeServiceWorkType
@@ -123,6 +124,15 @@ async function ensureSeedData() {
         role: 'user',
         label: 'reservas web'
     });
+
+    const sinAsignarExistente = await Client.findOne({ nombreNormalizado: 'sin asignar' });
+    if (!sinAsignarExistente) {
+        await Client.create({
+            nombre: 'SIN ASIGNAR',
+            nombreNormalizado: 'sin asignar'
+        });
+        console.log('Cliente "SIN ASIGNAR" creado');
+    }
 
     const defaultServices = [
         { nombre: 'Cejas', precio: 5000, duracionMinutos: 15, tipoTrabajo: DEFAULT_SERVICE_WORK_TYPE },
