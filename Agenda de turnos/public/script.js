@@ -1028,14 +1028,8 @@ function completarClientesDatalist() {
     }
 }
 
-function renderCajaClientesSelect() {
-    const select = $('cajaCliente');
-    if (!select) {
-        return;
-    }
-
-    const previous = select.value;
-    const clientesOrdenados = [...state.clientes].sort((a, b) => {
+function getCajaClientesOrdenados() {
+    return [...state.clientes].sort((a, b) => {
         const aSinAsignar = normalizeText(a.nombre) === 'sin asignar';
         const bSinAsignar = normalizeText(b.nombre) === 'sin asignar';
         if (aSinAsignar && !bSinAsignar) {
@@ -1046,16 +1040,42 @@ function renderCajaClientesSelect() {
         }
         return normalizeText(a.nombre).localeCompare(normalizeText(b.nombre));
     });
+}
 
-    const options = ['<option value="" disabled selected>Selecciona un cliente</option>']
-        .concat(clientesOrdenados.map((cliente) => `<option value="${cliente._id}">${escapeHtml(cliente.nombre)}</option>`))
-        .join('');
-
-    select.innerHTML = options;
-
-    if (previous && clientesOrdenados.some((cliente) => cliente._id === previous)) {
-        select.value = previous;
+function renderCajaClienteResultados(query) {
+    const container = $('cajaClienteResultados');
+    if (!container) {
+        return;
     }
+
+    const normalizedQuery = normalizeText(query || '');
+    const clientesOrdenados = getCajaClientesOrdenados();
+    const filtrados = normalizedQuery
+        ? clientesOrdenados.filter((cliente) => normalizeText(cliente.nombre).includes(normalizedQuery))
+        : clientesOrdenados;
+
+    if (!filtrados.length) {
+        container.innerHTML = '<div class="cliente-combo-empty">Sin resultados</div>';
+    } else {
+        container.innerHTML = filtrados
+            .slice(0, 50)
+            .map((cliente) => `<div class="cliente-combo-item" data-id="${cliente._id}">${escapeHtml(cliente.nombre)}</div>`)
+            .join('');
+    }
+
+    container.classList.remove('hidden');
+}
+
+function selectCajaCliente(clienteId, nombre) {
+    $('cajaCliente').value = clienteId;
+    $('cajaClienteInput').value = nombre;
+    $('cajaClienteResultados').classList.add('hidden');
+}
+
+function resetCajaClienteCombo() {
+    $('cajaCliente').value = '';
+    $('cajaClienteInput').value = '';
+    $('cajaClienteResultados').classList.add('hidden');
 }
 
 function renderClientesList() {
@@ -2847,7 +2867,6 @@ async function cargarProductos() {
 async function cargarClientes() {
     state.clientes = await apiFetch('/api/clientes');
     completarClientesDatalist();
-    renderCajaClientesSelect();
     renderClientesList();
     renderCumpleanos();
 
@@ -3817,6 +3836,38 @@ function attachEvents() {
         }
     });
 
+    const cajaClienteInput = $('cajaClienteInput');
+    const cajaClienteResultados = $('cajaClienteResultados');
+
+    if (cajaClienteInput && cajaClienteResultados) {
+        cajaClienteInput.addEventListener('input', () => {
+            $('cajaCliente').value = '';
+            renderCajaClienteResultados(cajaClienteInput.value);
+        });
+
+        cajaClienteInput.addEventListener('focus', () => {
+            renderCajaClienteResultados(cajaClienteInput.value);
+        });
+
+        cajaClienteInput.addEventListener('blur', () => {
+            window.setTimeout(() => {
+                cajaClienteResultados.classList.add('hidden');
+            }, 150);
+        });
+
+        cajaClienteResultados.addEventListener('click', (event) => {
+            const item = event.target.closest('.cliente-combo-item');
+            if (!item) {
+                return;
+            }
+
+            const cliente = state.clientes.find((c) => c._id === item.dataset.id);
+            if (cliente) {
+                selectCajaCliente(cliente._id, cliente.nombre);
+            }
+        });
+    }
+
     $('cajaForm').addEventListener('submit', async (event) => {
         event.preventDefault();
 
@@ -3854,7 +3905,7 @@ function attachEvents() {
             });
 
             setCajaFechaDefault();
-            $('cajaCliente').value = '';
+            resetCajaClienteCombo();
             $('cajaFormaPago').value = 'efectivo';
             $('cajaTipoVenta').value = 'servicio';
             renderCajaServiciosSelect();
