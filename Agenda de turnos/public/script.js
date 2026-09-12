@@ -1029,6 +1029,9 @@ function completarClientesDatalist() {
 }
 
 function getCajaClientesOrdenados() {
+    // state.clientes ya viene ordenado del backend por mas reciente primero
+    // (createdAt: -1). Solo fijamos "Sin asignar" arriba de todo, sin
+    // reordenar el resto.
     return [...state.clientes].sort((a, b) => {
         const aSinAsignar = normalizeText(a.nombre) === 'sin asignar';
         const bSinAsignar = normalizeText(b.nombre) === 'sin asignar';
@@ -1038,7 +1041,7 @@ function getCajaClientesOrdenados() {
         if (bSinAsignar && !aSinAsignar) {
             return 1;
         }
-        return normalizeText(a.nombre).localeCompare(normalizeText(b.nombre));
+        return 0;
     });
 }
 
