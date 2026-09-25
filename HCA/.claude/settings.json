@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh -i C:/Users/Usuario/AppData/Local/Temp/claude/d--Proyectos-HCA/f0ef36ed-3e0a-47c9-9f7b-7132bc8fd540/scratchpad/ssh/hca_deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes root@2.25.104.220 'echo CONEXION_OK && whoami && hostname')",
+      "Bash(nslookup salonmilano.nexarcode.net)",
+      "Bash(nslookup hcasublimados.nexarcode.net)",
+      "Bash(nslookup nexarcode.net)",
+      "Bash(nslookup -type=NS nexarcode.net)",
+      "Bash(nslookup -type=SOA nexarcode.net)",
+      "Bash(nslookup hcasublimados.nexarcode.net 1.1.1.1)",
+      "Bash(nslookup hcasublimados.nexarcode.net 8.8.8.8)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" https://hcasublimados.nexarcode.net)",
+      "Bash(curl -s https://hcasublimados.nexarcode.net)"
+    ]
+  }
+}

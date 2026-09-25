@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aquafast | Panel Comercial</title>
+    <meta name="description" content="Panel comercial demo de Aquafast para ventas, instalacion, vendedores y agenda de clientes.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <section id="loginScreen" class="login-screen">
+        <div class="auth-card">
+            <div class="auth-copy">
+                <div class="auth-brand">
+                    <img src="assets/aquafast-logo.png" alt="Aquafast" class="auth-logo">
+                    <div>
+                        <p class="eyebrow">Acceso privado</p>
+                        <h1>Panel comercial Aquafast</h1>
+                    </div>
+                </div>
+                <p class="lead">
+                    Sí, ahora lo llevamos al formato tipo sistema como `New Dent`:
+                    login primero, módulos adentro y vista de administrador para mostrar al cliente.
+                </p>
+                <div class="demo-access-grid">
+                    <article class="demo-access-card">
+                        <span class="pill">Administrador</span>
+                        <strong>Usuario: admin</strong>
+                        <strong>Clave: aquafast2026</strong>
+                        <p>Ve ventas, instalación, vendedores y agenda de clientes.</p>
+                    </article>
+                    <article class="demo-access-card">
+                        <span class="pill soft">Vendedor demo</span>
+                        <strong>Usuario: lucia</strong>
+                        <strong>Clave: ventas2026</strong>
+                        <p>Vista comercial reducida para preparar la configuración futura.</p>
+                    </article>
+                </div>
+            </div>
+
+            <div class="auth-panel">
+                <div class="panel-head">
+                    <p class="eyebrow">Ingresar</p>
+                    <h2>Demo de gestión</h2>
+                    <p>Entrá al panel con uno de los accesos demo.</p>
+                </div>
+
+                <form id="loginForm" class="form-grid">
+                    <label>
+                        Usuario
+                        <input id="usernameInput" type="text" autocomplete="username" placeholder="admin" required>
+                    </label>
+                    <label>
+                        Clave
+                        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="********" required>
+                    </label>
+                    <button class="button primary full-width" type="submit">Entrar al panel</button>
+                </form>
+
+                <p id="loginMessage" class="message error hidden" aria-live="polite"></p>
+
+                <div class="quick-actions">
+                    <button type="button" class="button secondary quick-fill" data-demo-user="admin">Cargar admin</button>
+                    <button type="button" class="button secondary quick-fill" data-demo-user="lucia">Cargar vendedor</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div id="appLayout" class="app-layout hidden">
+        <header class="topbar">
+            <div class="brand-panel">
+                <div class="brand-large">
+                    <img src="assets/aquafast-logo.png" alt="Aquafast" class="brand-logo">
+                    <div>
+                        <span>Panel Aquafast</span>
+                        <p class="brand-subtitle">Demo comercial para venta e instalación de piletas</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="top-controls">
+                <nav id="moduleNav" class="module-nav" aria-label="Modulos"></nav>
+                <div class="session-strip">
+                    <span id="sessionBadge" class="role-badge"></span>
+                    <span id="sessionText" class="session-text"></span>
+                    <button id="logoutButton" class="button danger" type="button">Cerrar sesión</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="content">
+            <section class="top-header">
+                <div>
+                    <p class="eyebrow">Demo cliente</p>
+                    <h2 id="moduleTitle">Ventas</h2>
+                    <p id="moduleSubtitle" class="subtitle"></p>
+                </div>
+                <div id="statusCards" class="status-card"></div>
+            </section>
+
+            <section id="moduleContent" class="module-card"></section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
